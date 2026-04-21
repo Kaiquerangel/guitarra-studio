@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>Guitarra Studio</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+
+<!-- ══════════════════════ FIREBASE ══════════════════════ -->
+<script type="module">
+import { initializeApp }                                   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+import { getAuth, signInWithPopup, signOut,
+         GoogleAuthProvider, onAuthStateChanged }          from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getFirestore, collection, doc, setDoc, getDocs,
+         deleteDoc, serverTimestamp, query, orderBy }      from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+// TODO: substitua com suas credenciais do Firebase Console
+// No Firebase Console: Authentication → Sign-in method → ativar Google
+const firebaseConfig = {
+  apiKey: "AIzaSyCSBHqOKvgiVxaR4CPMuhlql1D6Rsdh82o",
+  authDomain: "guitarra-studio.firebaseapp.com",
+  projectId: "guitarra-studio",
+  storageBucket: "guitarra-studio.firebasestorage.app",
+  messagingSenderId: "134866276164",
+  appId: "1:134866276164:web:3802f4bc681b4f70425111",
+  measurementId: "G-EMWS7Y8D6Q"
+};
+
+const app      = initializeApp(firebaseConfig);
+const auth     = getAuth(app);
+const db       = getFirestore(app);
+const provider = new GoogleAuthProvider();
+
+const col = p => collection(db,'users',window._uid,...p.split('/'));
+const ref = p => doc(db,'users',window._uid,...p.split('/'));
+
+window.FB = {
+  async save(path,data){ if(!window._db||!window._uid)return; await setDoc(ref(path),{...data,_at:serverTimestamp()}); },
+  async del(path){       if(!window._db||!window._uid)return; await deleteDoc(ref(path)); },
+  async loadAll(p){ if(!window._db||!window._uid)return null; try{ return(await getDocs(col(p))).docs.map(d=>d.data()); }catch{ return null; }},
+  async loadOrdered(p,f){ if(!window._db||!window._uid)return null; try{ return(await getDocs(query(col(p),orderBy(f,'desc')))).docs.map(d=>d.data()); }catch{ return null; }},
+};
+
+window.AUTH = {
+  async loginGoogle(){ try{ await signInWithPopup(auth,provider); }catch(e){ console.warn(e); window.dispatchEvent(new CustomEvent('auth-error',{detail:e.message})); }},
+  async logout(){ await signOut(auth); window._uid=null; window._db=null; window.dispatchEvent(new Event('auth-logout')); }
+};
+
+onAuthStateChanged(auth, user => {
+  if(user){
+    window._uid = user.uid;
+    window._db  = db;
+    window._user = { name: user.displayName, email: user.email, photo: user.photoURL };
+    window.dispatchEvent(new CustomEvent('firebase-ready', { detail: { user } }));
+  } else {
+    window._uid  = null;
+    window._db   = null;
+    window._user = null;
+    window.dispatchEvent(new Event('firebase-signout'));
+  }
+});
+</script>
+</head>
+<body data-theme="amber">
+
+<!-- ════ LOGIN SCREEN ════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-icon">🎸</div>
+    <div class="login-title">Guitarra Studio</div>
+    <div class="login-sub">Entre com sua conta Google para sincronizar seu progresso em qualquer dispositivo.</div>
+    <button class="login-google-btn" onclick="AUTH.loginGoogle()">
+      <svg class="login-google-icon" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+      Entrar com Google
+    </button>
+    <div class="login-offline" onclick="useOffline()">Usar sem conta (dados locais apenas)</div>
+  </div>
+</div>
+
+<!-- ════ LOADING ════ -->
+<div id="app-loading" class="hidden"><div class="loading-spinner"></div><span id="load-msg">Carregando...</span></div>
+
+<!-- ════ TOPBAR ════ -->
+<header class="topbar">
+  <div class="topbar-logo"><div class="topbar-logo-icon">🎸</div><span class="tab-desktop-only" style="font-size:15px;font-weight:600;">Guitarra Studio</span></div>
+  <div class="topbar-sep tab-desktop-only"></div>
+  <button class="tab on tab-desktop-only"  onclick="switchTab('dash',this)">Início</button>
+  <button class="tab tab-desktop-only"     onclick="switchTab('board',this)">Quadro</button>
+  <button class="tab tab-desktop-only"     onclick="switchTab('cycles',this)">Ciclos</button>
+  <button class="tab tab-desktop-only"     onclick="switchTab('agenda',this)">Agenda</button>
+  <button class="tab tab-desktop-only"     onclick="switchTab('goals',this)">Metas</button>
+  <button class="tab tab-desktop-only"     onclick="switchTab('hist',this)">Histórico</button>
+  <div class="topbar-right">
+    <div class="sync-status tab-desktop-only"><div class="sync-dot syncing" id="sync-dot"></div><span id="sync-label">…</span></div>
+    <span class="topbar-date tab-desktop-only" id="tb-date"></span>
+    <button class="icon-btn" onclick="toggleDark()" title="Modo escuro (D)">🌙</button>
+    <button class="icon-btn" onclick="togglePalette()" title="Paleta de cores">🎨</button>
+    <button class="icon-btn tab-desktop-only" onclick="exportData()" title="Exportar dados">⬇</button>
+    <div class="user-avatar" id="user-avatar" onclick="toggleUserMenu()">?</div>
+  </div>
+</header>
+
+<!-- Palette popup -->
+<div class="palette-popup" id="palette-popup">
+  <div class="palette-popup-title">Paleta de cores</div>
+  <div class="palette-option active" data-theme="amber" onclick="setPalette('amber',this)"><div class="palette-swatch"><span style="background:#92400E"></span><span style="background:#C2610F"></span><span style="background:#FEF3E2"></span></div><div><div class="palette-name">🟠 Âmbar</div></div></div>
+  <div class="palette-option" data-theme="moss" onclick="setPalette('moss',this)"><div class="palette-swatch"><span style="background:#1A4731"></span><span style="background:#3D7A4A"></span><span style="background:#ECFDF5"></span></div><div><div class="palette-name">🟢 Verde Musgo</div></div></div>
+  <div class="palette-option" data-theme="slate" onclick="setPalette('slate',this)"><div class="palette-swatch"><span style="background:#1E293B"></span><span style="background:#334155"></span><span style="background:#F1F5F9"></span></div><div><div class="palette-name">⚫ Grafite</div></div></div>
+  <div class="palette-option" data-theme="wine" onclick="setPalette('wine',this)"><div class="palette-swatch"><span style="background:#6B0F25"></span><span style="background:#9F1239"></span><span style="background:#FFF1F2"></span></div><div><div class="palette-name">🍷 Vinho</div></div></div>
+  <div class="palette-option" data-theme="midnight" onclick="setPalette('midnight',this)"><div class="palette-swatch"><span style="background:#312E81"></span><span style="background:#4F46E5"></span><span style="background:#EEF2FF"></span></div><div><div class="palette-name">🌙 Meia-Noite</div></div></div>
+</div>
+
+<!-- User menu -->
+<div class="user-menu" id="user-menu">
+  <div class="user-menu-header">
+    <div class="user-menu-name" id="um-name">Usuário</div>
+    <div class="user-menu-email" id="um-email"></div>
+  </div>
+  <div class="user-menu-item" onclick="exportData()">⬇ Exportar dados (JSON)</div>
+  <div class="user-menu-item" onclick="exportData('csv')">⬇ Exportar histórico (CSV)</div>
+  <div class="user-menu-item danger" onclick="confirmLogout()">↩ Sair da conta</div>
+</div>
+
+<!-- Inatividade -->
+<div class="inactivity-banner" id="inactivity-banner">
+  ⏰ <strong id="inactivity-msg"></strong> — que tal praticar hoje?
+  <button class="btn sm" style="margin-left:auto" onclick="dismissInactivity()">Dispensar</button>
+</div>
+
+<!-- Pomodoro -->
+<div class="pomobar">
+  <div class="pcirc"><svg width="44" height="44"><circle cx="22" cy="22" r="19" fill="none" stroke="var(--border)" stroke-width="2.5"/><circle cx="22" cy="22" r="19" fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-dasharray="119" stroke-dashoffset="119" id="p-arc" stroke-linecap="round"/></svg><div class="ptime" id="p-time">25:00</div></div>
+  <div class="pmeta"><div class="pphase" id="p-phase">Foco</div><div class="pex" id="p-ex">Selecione um exercício</div></div>
+  <div class="pdots" id="p-dots"></div>
+  <button class="btn pri" id="p-btn" onclick="togglePomo()">Iniciar <span class="kbd tab-desktop-only">Space</span></button>
+  <button class="btn" onclick="resetPomo()">↺</button>
+  <button class="cfg-tog" id="cfg-btn" onclick="toggleCfg()">⚙</button>
+</div>
+<div class="cfg-panel" id="cfg-panel">
+  <div class="cfg-field"><label>Foco</label><input type="number" id="cfg-work" value="25" min="1" max="90" onchange="applyConfig()"></div>
+  <div class="cfg-field"><label>Curto</label><input type="number" id="cfg-short" value="5" min="1" max="30" onchange="applyConfig()"></div>
+  <div class="cfg-field"><label>Longo</label><input type="number" id="cfg-long" value="15" min="1" max="60" onchange="applyConfig()"></div>
+  <div class="cfg-field"><label>Ciclos</label><input type="number" id="cfg-cyc" value="4" min="1" max="10" onchange="applyConfig()"></div>
+  <div class="snd-row"><label class="snd-lbl"><input type="checkbox" id="snd" checked> Alerta</label><label class="snd-lbl"><input type="checkbox" id="snd-tick"> Tique-taque</label></div>
+</div>
+
+<div class="toast-container" id="toast-container"></div>
+
+<!-- ════ TABS ════ -->
+<main id="tab-dash"><div class="dash-wrap"><div id="dash-cycle-banner"></div><div class="dash-stats" id="dash-stats"></div><div id="dash-urgent"></div><div id="dash-focus-area"></div><div id="dash-next-area"></div></div></main>
+
+<section id="tab-board" style="display:none">
+  <div class="board-wrap-outer">
+    <div class="board-header"><div style="display:flex;align-items:center;gap:8px"><span class="board-title">Quadro</span><span class="board-cycle-tag" id="board-cycle-tag"></span></div></div>
+    <div class="board" id="board-inner"><div id="pending-area" style="display:flex;gap:10px;flex-wrap:wrap;"></div><div class="done-col"><div class="done-col-toggle" onclick="toggleDoneCol()"><div class="col-label done-label" style="margin-bottom:0">Concluídos</div><span class="wcol-count" id="cnt-done">0</span></div><div class="done-col-body" id="done-col-body"></div></div></div>
+  </div>
+</section>
+
+<section id="tab-cycles" style="display:none"><div class="cycles-wrap"><div class="cycles-header"><div class="cycles-title">📚 Ciclos de estudo</div><button class="btn pri" onclick="openCycleModal()">+ Novo ciclo</button></div><div id="cycles-list"></div></div></section>
+
+<section id="tab-agenda" style="display:none"><div class="agenda-wrap"><div class="agenda-title">Agenda semanal<div class="agenda-week-nav"><button class="btn sm" onclick="agendaWeek(-1)">‹</button><span class="agenda-week-label" id="agenda-week-label"></span><button class="btn sm" onclick="agendaWeek(+1)">›</button></div></div><div class="agenda-grid" id="agenda-grid"></div></div></section>
+
+<section id="tab-goals" style="display:none"><div class="goals-wrap"><div class="goals-header"><div class="goals-title">🎯 Metas</div><button class="btn pri" onclick="openGoalModal()">+ Nova meta</button></div><div class="goal-tabs"><button class="goal-tab on" onclick="setGoalTab('active',this)">Ativas</button><button class="goal-tab" onclick="setGoalTab('done',this)">Concluídas</button></div><div id="goals-list"></div></div></section>
+
+<section id="tab-hist" style="display:none">
+  <div class="hist-wrap">
+    <div class="stat-grid"><div class="stat-box"><div class="stat-num" id="h-total">0</div><div class="stat-lbl">Sessões</div></div><div class="stat-box"><div class="stat-num" id="h-mins">0</div><div class="stat-lbl">Minutos</div></div><div class="stat-box"><div class="stat-num" id="h-streak">0</div><div class="stat-lbl">Streak</div></div></div>
+    <div class="hcard"><div class="hcard-title">Calendário de prática</div><div class="heatmap-wrap" id="heatmap-wrap"></div><div class="streak-info" id="streak-info"></div></div>
+    <div class="hcard"><div class="hcard-title">Frequência semanal</div><div class="bar-wrap" id="h-bars"></div><div class="bar-lbl-row" id="h-bar-lbls"></div></div>
+    <div class="hcard"><div class="hcard-title">Evolução de BPM<select id="bpm-ex-filter" onchange="renderBpmChart()" style="font-size:11px;padding:3px 8px;border:1px solid var(--border);border-radius:var(--radius);font-family:var(--font-ui);background:var(--bg-card);color:var(--text);cursor:pointer;"><option value="">Exercício...</option></select></div><div id="bpm-chart-area"><div class="bpm-no-data">Selecione um exercício</div></div></div>
+    <div class="hcard"><div class="hcard-title">Linha do tempo</div><div class="hist-filter"><label>Exercício:</label><select id="hist-filter-sel" onchange="renderTimeline()"><option value="">Todos</option></select><select id="hist-cycle-filter" onchange="renderTimeline()" style="padding:5px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--font-ui);background:var(--bg-card);color:var(--text);cursor:pointer;"><option value="">Todos os ciclos</option></select></div><div id="h-list"></div><div class="hist-pagination" id="hist-pagination"></div></div>
+  </div>
+</section>
+
+<!-- ════ BOTTOM NAV (mobile) ════ -->
+<nav class="bottom-nav">
+  <div class="bottom-nav-inner">
+    <div class="bnav-item on" onclick="switchTab('dash',null,'dash')" id="bnav-dash"><div class="bnav-icon">🏠</div><div class="bnav-label">Início</div></div>
+    <div class="bnav-item" onclick="switchTab('board',null,'board')" id="bnav-board"><div class="bnav-icon">📋</div><div class="bnav-label">Quadro</div></div>
+    <div class="bnav-item" onclick="switchTab('cycles',null,'cycles')" id="bnav-cycles"><div class="bnav-icon">📚</div><div class="bnav-label">Ciclos</div></div>
+    <div class="bnav-item" onclick="switchTab('goals',null,'goals')" id="bnav-goals"><div class="bnav-icon">🎯</div><div class="bnav-label">Metas</div></div>
+    <div class="bnav-item" onclick="switchTab('hist',null,'hist')" id="bnav-hist"><div class="bnav-icon">📊</div><div class="bnav-label">Histórico</div></div>
+  </div>
+</nav>
+
+<!-- ════ MODAIS ════ -->
+<div class="modal-overlay" id="edit-modal" onclick="if(event.target===this)closeModal('edit-modal')">
+  <div class="modal"><div class="modal-title">Editar exercício</div>
+    <div class="modal-field"><label>Nome</label><input type="text" id="edit-name"></div>
+    <div class="modal-field"><label>Descrição</label><textarea id="edit-desc"></textarea></div>
+    <div class="modal-row">
+      <div class="modal-field"><label>Semana</label><select id="edit-week"><option value="0">Semana 1</option><option value="1">Semana 2</option><option value="2">Semana 3</option><option value="3">Semana 4</option></select></div>
+      <div class="modal-field"><label>Dificuldade</label><select id="edit-diff"><option value="1">1 — Iniciante</option><option value="2">2 — Básico</option><option value="3">3 — Intermediário</option><option value="4">4 — Avançado</option><option value="5">5 — Expert</option></select></div>
+    </div>
+    <div class="modal-actions"><button class="btn danger" onclick="deleteEx()">Excluir</button><button class="btn ghost" onclick="closeModal('edit-modal')">Cancelar</button><button class="btn pri" onclick="saveEdit()">Salvar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="cycle-modal" onclick="if(event.target===this)closeModal('cycle-modal')">
+  <div class="modal"><div class="modal-title" id="cycle-modal-title">Novo ciclo</div>
+    <div class="modal-field"><label>Nome</label><input type="text" id="cycle-name" placeholder="Ex: Fundamentos, Blues, Técnica Avançada..."></div>
+    <div class="modal-field"><label>Descrição</label><textarea id="cycle-desc" placeholder="Objetivos e foco deste ciclo..."></textarea></div>
+    <div class="modal-row"><div class="modal-field"><label>Início</label><input type="date" id="cycle-start"></div><div class="modal-field"><label>Previsão fim</label><input type="date" id="cycle-end"></div></div>
+    <div class="modal-field"><label>Ícone</label><select id="cycle-icon"><option value="🎸">🎸 Guitarra</option><option value="🎵">🎵 Música</option><option value="🔥">🔥 Intenso</option><option value="🌱">🌱 Iniciante</option><option value="⚡">⚡ Avançado</option><option value="🎯">🎯 Foco</option><option value="🏆">🏆 Desafio</option><option value="📚">📚 Estudo</option></select></div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal('cycle-modal')">Cancelar</button><button class="btn pri" onclick="saveCycle()">Salvar</button></div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="goal-modal" onclick="if(event.target===this)closeModal('goal-modal')">
+  <div class="modal"><div class="modal-title" id="goal-modal-title">Nova meta</div>
+    <div class="modal-field"><label>Exercício</label><select id="goal-ex-sel"><option value="">Selecione...</option></select></div>
+    <div class="modal-field"><label>Descrição</label><textarea id="goal-desc" placeholder="Ex: Tocar a escala a 120 bpm com clareza total"></textarea></div>
+    <div class="modal-row"><div class="modal-field"><label>Data-alvo</label><input type="date" id="goal-date"></div><div class="modal-field"><label>BPM alvo</label><input type="number" id="goal-bpm" placeholder="Ex: 120" min="20" max="300"></div></div>
+    <div class="modal-actions"><button class="btn ghost" onclick="closeModal('goal-modal')">Cancelar</button><button class="btn pri" onclick="saveGoal()">Salvar</button></div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
