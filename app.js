@@ -91,6 +91,7 @@ function confirmLogout(){
 }
 
 document.addEventListener('click',e=>{
+  if(!e.target.closest('.card-menu')&&!e.target.closest('.card-menu-btn')) closeCardMenus();
   if(userMenuOpen&&!e.target.closest('#user-menu')&&!e.target.closest('#user-avatar')){
     userMenuOpen=false;document.getElementById('user-menu').classList.remove('open');
   }
@@ -484,7 +485,15 @@ function renderPending(){
         const db=dh!==null?`<span class="days-badge${dh>=7?' warn':''}">${dh}d</span>`:'';
         const adv=e.week<3?`<button class="btn xs advance-btn" onclick="event.stopPropagation();advanceWeek(${e.id})">→ Sem ${e.week+2}</button>`:`<span class="last-week-tag">✓ Final</span>`;
         return`<div class="ex-card${isFocus?' in-focus':''}" onclick="setFocus(${e.id})">
-          <div class="ex-card-name">${e.name}</div><div class="ex-card-desc">${sd}</div>
+          <div class="ex-card-top">
+            <div class="ex-card-name">${e.name}</div>
+            <button class="card-menu-btn" onclick="event.stopPropagation();toggleCardMenu(${e.id})" title="Opções">⋯</button>
+            <div class="card-menu" id="card-menu-${e.id}">
+              <div class="card-menu-item" onclick="event.stopPropagation();closeCardMenus();openEditModal(${e.id})">✏️ Editar</div>
+              <div class="card-menu-item danger" onclick="event.stopPropagation();closeCardMenus();deleteExById(${e.id})">🗑️ Excluir</div>
+            </div>
+          </div>
+          <div class="ex-card-desc">${sd}</div>
           <div class="card-pills">${diffPill(e.diff)}${isFocus?'<span class="focus-badge">foco</span>':''}${deadlineBadge(e)}${db}<div class="card-check${e.done?' dn':''}" onclick="event.stopPropagation();markDone(${e.id})"></div></div>
           <div class="card-advance-row">${adv}</div>
         </div>`;
@@ -539,6 +548,25 @@ function openAdd(w){
 async function addEx(w){const name=document.getElementById(`nf-name-${w}`).value.trim();if(!name){showToast('Informe o nome.','info');return;}const desc=document.getElementById(`nf-desc-${w}`).value.trim();const diff=parseInt(document.getElementById(`nf-diff-${w}`).value);const count=exercises.filter(e=>e.week===w&&!e.done).length;if(count>=6&&!confirm(`A ${WK_NAMES[w]} já tem ${count} exercícios. Adicionar mesmo assim?`))return;const ex={id:nextId++,week:w,name,desc:desc||'Sem descrição.',done:false,focus:false,diff,weekSince:dateStr(new Date()),cycleId:activeCycleId||null};exercises.push(ex);await syncEx(ex);showToast(`"${name}" adicionado!`,'success');render();renderDash();}
 function openEditModal(id){editingId=id;const ex=exercises.find(e=>e.id===id);if(!ex)return;document.getElementById('edit-name').value=ex.name;document.getElementById('edit-desc').value=ex.desc;document.getElementById('edit-week').value=ex.week;document.getElementById('edit-diff').value=ex.diff;document.getElementById('edit-modal').classList.add('open');}
 async function saveEdit(){const ex=exercises.find(e=>e.id===editingId);if(!ex)return;ex.name=document.getElementById('edit-name').value.trim()||ex.name;ex.desc=document.getElementById('edit-desc').value.trim()||ex.desc;ex.week=parseInt(document.getElementById('edit-week').value);ex.diff=parseInt(document.getElementById('edit-diff').value);await syncEx(ex);closeModal('edit-modal');showToast('Atualizado.','info');render();renderDash();}
+// Card menu helpers
+function toggleCardMenu(id){
+  const menu=document.getElementById(`card-menu-${id}`);
+  const isOpen=menu.classList.contains('open');
+  closeCardMenus();
+  if(!isOpen) menu.classList.add('open');
+}
+function closeCardMenus(){
+  document.querySelectorAll('.card-menu.open').forEach(m=>m.classList.remove('open'));
+}
+async function deleteExById(id){
+  if(!confirm('Excluir este exercício permanentemente?'))return;
+  exercises=exercises.filter(e=>e.id!==id);
+  await FB.del(`exercises/${id}`).catch(()=>{});
+  saveAll();
+  showToast('Exercício excluído.','info');
+  render();renderDash();
+}
+
 async function deleteEx(){if(!confirm('Excluir permanentemente?'))return;exercises=exercises.filter(e=>e.id!==editingId);await FB.del(`exercises/${editingId}`).catch(()=>{});saveAll();closeModal('edit-modal');showToast('Excluído.','info');render();renderDash();}
 
 // ════════════════════════════════════════
