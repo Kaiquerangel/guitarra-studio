@@ -25,17 +25,24 @@ const LS={
 // ════════════════════════════════════════
 // AUTH & LOGIN
 // ════════════════════════════════════════
-window.addEventListener('firebase-signout', ()=>{
-  document.getElementById('login-screen').classList.remove('hidden');
-});
+// firebase-signout unificado com auth-logout (ver index.html)
 
 // Disparado pelo AUTH.logout()
 window.addEventListener('auth-logout', ()=>{
+  // Limpar estado da aplicação
+  exercises=[]; history=[]; goals=[]; schedule={}; cycles=[];
+  activeCycleId=null; editingId=null; editingCycleId=null; editingGoalId=null;
+  histPage=0; agendaOffset=0;
+  // Parar timer se estiver rodando
+  if(tRun){ clearInterval(tInt); tRun=false; }
+  stopMetro();
   document.getElementById('login-screen').classList.remove('hidden');
 });
 
 window.addEventListener('auth-error', e=>{
-  showToast('Erro no login: '+e.detail,'warn');
+  showToast('Erro no login: '+e.detail,'info');
+  // Garantir que a tela de login apareça se escondida por algum motivo
+  document.getElementById('login-screen').classList.remove('hidden');
 });
 
 window.addEventListener('firebase-ready', async e=>{
@@ -49,7 +56,7 @@ window.addEventListener('firebase-ready', async e=>{
 // do app.js terminar de carregar, inicia direto.
 if(window._uid && window._uid !== 'offline'){
   document.getElementById('login-screen').classList.add('hidden');
-  updateUserUI(window._user);
+  updateUserUI(window._user||null);
   loadAndInit();
 }
 
@@ -67,8 +74,14 @@ function updateUserUI(user){
   if(user){
     nm.textContent=user.displayName||'Usuário';
     em.textContent=user.email||'';
-    if(user.photoURL){
-      av.innerHTML=`<img src="${user.photoURL}" style="width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,.4)">`;
+    if(user.photoURL && user.photoURL.startsWith('https://')){
+      const img=document.createElement('img');
+      img.src=user.photoURL;
+      img.style.cssText='width:28px;height:28px;border-radius:50%;border:2px solid rgba(255,255,255,.4)';
+      img.alt='Avatar';
+      img.onerror=()=>{av.textContent=(user.displayName||'U')[0].toUpperCase();};
+      av.innerHTML='';
+      av.appendChild(img);
     }else{
       av.textContent=(user.displayName||'U')[0].toUpperCase();
     }
@@ -91,7 +104,7 @@ function confirmLogout(){
 }
 
 document.addEventListener('click',e=>{
-  if(!e.target.closest('.card-menu')&&!e.target.closest('.card-menu-btn')) closeCardMenus();
+  if(!e.target.closest('.card-menu')&&!e.target.closest('.card-menu-btn'))closeCardMenus();
   if(userMenuOpen&&!e.target.closest('#user-menu')&&!e.target.closest('#user-avatar')){
     userMenuOpen=false;document.getElementById('user-menu').classList.remove('open');
   }
@@ -330,6 +343,7 @@ function stopMetro(){
   if(btn)btn.textContent='▶ Iniciar';
 }
 
+let _tapResetTimer=null;
 function tapTempo(){
   const now=Date.now();
   tapTimes.push(now);
@@ -339,8 +353,8 @@ function tapTempo(){
     const avg=gaps.reduce((a,b)=>a+b)/gaps.length;
     setBpm(Math.round(60000/avg));
   }
-  clearTimeout(tapTimes._t);
-  tapTimes._t=setTimeout(()=>{tapTimes=[];},2000);
+  clearTimeout(_tapResetTimer);
+  _tapResetTimer=setTimeout(()=>{tapTimes=[];},2000);
 }
 
 // ════════════════════════════════════════
@@ -348,7 +362,7 @@ function tapTempo(){
 // ════════════════════════════════════════
 let tInt=null,tRun=false,totSec=25*60,remSec=25*60,phase='work',pomoDone=0;
 function toggleCfg(){showCfg=!showCfg;document.getElementById('cfg-panel').classList.toggle('open',showCfg);document.getElementById('cfg-btn').classList.toggle('active',showCfg);}
-function applyConfig(){if(!tRun){totSec=parseInt(document.getElementById('cfg-work').value)*60;remSec=totSec;phase='work';pomoDone=0;updatePomo();renderPomoDots();}}
+function applyConfig(){if(!tRun){totSec=parseInt(document.getElementById('cfg-work').value)*60;remSec=totSec;phase='work';pomoDone=0;updatePomo();renderPomoDots();document.getElementById('p-btn').innerHTML='Iniciar <span class="kbd tab-desktop-only">Space</span>';;showToast('Config aplicada!','info');}else{showToast('Pare o timer antes de alterar.','info');}}
 function getFmt(s){return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');}
 function renderPomoDots(){const cyc=parseInt(document.getElementById('cfg-cyc').value)||4;document.getElementById('p-dots').innerHTML=Array.from({length:cyc},(_,i)=>`<div class="pdot${i<pomoDone?' dn':i===pomoDone?' cur':''}"></div>`).join('');}
 function updatePomo(){document.getElementById('p-time').textContent=getFmt(remSec);const c=2*Math.PI*19,o=c*(remSec/totSec);document.getElementById('p-arc').style.stroke=phase==='work'?'var(--acc)':'var(--acc-mid)';document.getElementById('p-arc').setAttribute('stroke-dashoffset',o);document.getElementById('p-phase').textContent={work:'Foco',short:'Intervalo',long:'Descanso longo'}[phase];}
@@ -374,7 +388,7 @@ document.addEventListener('keydown', e=>{
   if(e.key===' '){e.preventDefault();togglePomo();}
   if(e.key==='s'||e.key==='S'){const ex=getFocusEx();if(ex)saveSession(ex.id);}
   if(e.key==='d'||e.key==='D')toggleDark();
-  if(e.key==='Escape'){document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));closeAllPopups();}
+  if(e.key==='Escape'){document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));closeAllPopups();closeCardMenus?.();}
   if(e.key==='1')switchTab('dash',null,'dash');
   if(e.key==='2')switchTab('board',null,'board');
   if(e.key==='3')switchTab('cycles',null,'cycles');
@@ -463,7 +477,7 @@ function renderDashNext(){
   const focEx=getFocusEx();
   const next=exercises.filter(e=>!e.done&&(!focEx||e.id!==focEx.id)).slice(0,3);
   if(!next.length){el.innerHTML='';return;}
-  el.innerHTML=`<div class="dash-next"><div class="dash-next-title">Próximos exercícios<button class="btn xs ghost" onclick="switchTab('board',null,'board')">Ver todos →</button></div>${next.map(e=>`<div class="next-item" onclick="setFocus(${e.id})"><span class="next-item-name">${e.name}</span><span class="next-item-meta">${diffPill(e.diff)} ${weekPill(e.week)}${deadlineBadge(e)}</span></div>`).join('')}</div>`;
+  el.innerHTML=`<div class="dash-next"><div class="dash-next-title">Próximos exercícios<button class="btn xs ghost" onclick="switchTab('board',null,'board')">Ver todos →</button></div>${next.map(e=>`<div class="next-item" onclick="setFocus(${e.id});switchTab('board',null,'board')"><span class="next-item-name">${e.name}</span><span class="next-item-meta">${diffPill(e.diff)} ${weekPill(e.week)}${deadlineBadge(e)}</span></div>`).join('')}</div>`;
 }
 
 // ════════════════════════════════════════
@@ -515,9 +529,25 @@ function toggleDoneCol(){doneColOpen=!doneColOpen;document.getElementById('done-
 // ════════════════════════════════════════
 // FOCO / AÇÕES
 // ════════════════════════════════════════
-function setFocus(id){exercises.forEach(e=>e.focus=false);const ex=exercises.find(e=>e.id===id);if(ex){ex.focus=true;if(!tRun)document.getElementById('p-ex').textContent=ex.name;}syncEx(ex);render();renderDash();}
+function setFocus(id){
+  const prev=exercises.find(e=>e.focus);
+  exercises.forEach(e=>e.focus=false);
+  const ex=exercises.find(e=>e.id===id);
+  if(ex){ex.focus=true;if(!tRun)document.getElementById('p-ex').textContent=ex.name;}
+  if(prev&&prev.id!==id) syncEx(prev);
+  if(ex) syncEx(ex);
+  render();renderDash();
+}
 
-function markDone(id){const ex=exercises.find(e=>e.id===id);if(!ex)return;ex.done=true;ex.focus=false;const next=exercises.find(e=>!e.done&&e.week===ex.week)||exercises.find(e=>!e.done);if(next){next.focus=true;if(!tRun)document.getElementById('p-ex').textContent=next.name;syncEx(next);}syncEx(ex);render();renderDash();}
+async function markDone(id){
+  const ex=exercises.find(e=>e.id===id);if(!ex)return;
+  ex.done=true;ex.focus=false;
+  const next=exercises.find(e=>!e.done&&e.week===ex.week)||exercises.find(e=>!e.done);
+  if(next){next.focus=true;document.getElementById('p-ex').textContent=next.name;await syncEx(next);}
+  await syncEx(ex);
+  showToast(`"${ex.name}" concluído! 🎉`,'success');
+  render();renderDash();
+}
 
 async function advanceWeek(id){const ex=exercises.find(e=>e.id===id);if(!ex||ex.week>=3)return;ex.week++;ex.weekSince=dateStr(new Date());await syncEx(ex);showToast(`"${ex.name}" → ${WK_NAMES[ex.week]} 🚀`,'success');render();renderDash();}
 
@@ -530,8 +560,9 @@ async function saveSession(id){
   const sess={id:String(Date.now()),exId:ex.id,ex:ex.name,diff:ex.diff,cycleId:ex.cycleId||activeCycleId||null,isoDate:dateStr(now),date:now.toLocaleDateString('pt-BR'),time:now.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}),week:getISOWeek(now),duration:dur,note:note||'—',bpm};
   history.unshift(sess);
   await syncSess(sess);
-  showToast(`"${ex.name}" salva! ✓`,'success');
-  markDone(id);
+  showToast(`Sessão de "${ex.name}" salva! ✓`,'success');
+  if(currentTab==='hist')renderHist();
+  renderDash();
 }
 
 // ════════════════════════════════════════
@@ -545,15 +576,16 @@ function openAdd(w){
   div.innerHTML=`<div class="add-form"><input type="text" id="nf-name-${w}" placeholder="Nome do exercício"><textarea id="nf-desc-${w}" placeholder="Descrição, técnica, andamento..."></textarea><div class="add-form-row"><select id="nf-diff-${w}" style="flex:1">${[1,2,3,4,5].map(d=>`<option value="${d}">${d} — ${DIFF_LABELS[d]}</option>`).join('')}</select></div><div class="add-form-row"><button class="btn pri" style="flex:1" onclick="addEx(${w})">Adicionar</button><button class="btn ghost" onclick="document.getElementById('addform-w${w}').style.display='none';document.getElementById('addform-w${w}').innerHTML=''">✕</button></div></div>`;
   setTimeout(()=>document.getElementById(`nf-name-${w}`)?.focus(),50);
 }
-async function addEx(w){const name=document.getElementById(`nf-name-${w}`).value.trim();if(!name){showToast('Informe o nome.','info');return;}const desc=document.getElementById(`nf-desc-${w}`).value.trim();const diff=parseInt(document.getElementById(`nf-diff-${w}`).value);const count=exercises.filter(e=>e.week===w&&!e.done).length;if(count>=6&&!confirm(`A ${WK_NAMES[w]} já tem ${count} exercícios. Adicionar mesmo assim?`))return;const ex={id:nextId++,week:w,name,desc:desc||'Sem descrição.',done:false,focus:false,diff,weekSince:dateStr(new Date()),cycleId:activeCycleId||null};exercises.push(ex);await syncEx(ex);showToast(`"${name}" adicionado!`,'success');render();renderDash();}
+async function addEx(w){const name=document.getElementById(`nf-name-${w}`).value.trim();if(!name){showToast('Informe o nome.','info');return;}const desc=document.getElementById(`nf-desc-${w}`).value.trim();const diff=parseInt(document.getElementById(`nf-diff-${w}`).value);const count=exercises.filter(e=>e.week===w&&!e.done).length;if(count>=6&&!confirm(`A ${WK_NAMES[w]} já tem ${count} exercícios. Adicionar mesmo assim?`))return;const ex={id:nextId++,week:w,name,desc:desc||'Sem descrição.',done:false,focus:false,diff,weekSince:dateStr(new Date()),cycleId:activeCycleId||null};exercises.push(ex);await syncEx(ex);showToast(`"${name}" adicionado!`,'success');document.getElementById(`addform-w${w}`).style.display='none';document.getElementById(`addform-w${w}`).innerHTML='';render();renderDash();}
 function openEditModal(id){editingId=id;const ex=exercises.find(e=>e.id===id);if(!ex)return;document.getElementById('edit-name').value=ex.name;document.getElementById('edit-desc').value=ex.desc;document.getElementById('edit-week').value=ex.week;document.getElementById('edit-diff').value=ex.diff;document.getElementById('edit-modal').classList.add('open');}
-async function saveEdit(){const ex=exercises.find(e=>e.id===editingId);if(!ex)return;ex.name=document.getElementById('edit-name').value.trim()||ex.name;ex.desc=document.getElementById('edit-desc').value.trim()||ex.desc;ex.week=parseInt(document.getElementById('edit-week').value);ex.diff=parseInt(document.getElementById('edit-diff').value);await syncEx(ex);closeModal('edit-modal');showToast('Atualizado.','info');render();renderDash();}
+async function saveEdit(){const ex=exercises.find(e=>e.id===editingId);if(!ex)return;const newName=document.getElementById('edit-name').value.trim();const newDesc=document.getElementById('edit-desc').value.trim();if(!newName){showToast('O nome não pode ficar vazio.','info');return;}ex.name=newName;ex.desc=newDesc||ex.desc;ex.week=parseInt(document.getElementById('edit-week').value);ex.diff=parseInt(document.getElementById('edit-diff').value);await syncEx(ex);closeModal('edit-modal');showToast('Exercício atualizado!','success');if(ex.focus)document.getElementById('p-ex').textContent=ex.name;render();renderDash();}
 // Card menu helpers
 function toggleCardMenu(id){
   const menu=document.getElementById(`card-menu-${id}`);
+  if(!menu)return;
   const isOpen=menu.classList.contains('open');
   closeCardMenus();
-  if(!isOpen) menu.classList.add('open');
+  if(!isOpen)menu.classList.add('open');
 }
 function closeCardMenus(){
   document.querySelectorAll('.card-menu.open').forEach(m=>m.classList.remove('open'));
@@ -567,7 +599,7 @@ async function deleteExById(id){
   render();renderDash();
 }
 
-async function deleteEx(){if(!confirm('Excluir permanentemente?'))return;exercises=exercises.filter(e=>e.id!==editingId);await FB.del(`exercises/${editingId}`).catch(()=>{});saveAll();closeModal('edit-modal');showToast('Excluído.','info');render();renderDash();}
+async function deleteEx(){if(!confirm('Excluir permanentemente?'))return;const id=editingId;exercises=exercises.filter(e=>e.id!==id);await FB.del(`exercises/${id}`).catch(()=>{});saveAll();editingId=null;closeModal('edit-modal');showToast('Exercício excluído.','info');render();renderDash();}
 
 // ════════════════════════════════════════
 // CICLOS
@@ -632,13 +664,13 @@ function setGoalTab(t,btn){_goalTab=t;document.querySelectorAll('.goal-tab').for
 function openGoalModal(id=null){editingGoalId=id;const g=id?goals.find(g=>g.id===id):null;document.getElementById('goal-modal-title').textContent=id?'Editar meta':'Nova meta';const sel=document.getElementById('goal-ex-sel');sel.innerHTML=`<option value="">Selecione...</option>`+exercises.map(e=>`<option value="${e.id}">${e.name}</option>`).join('');document.getElementById('goal-ex-sel').value=g?.exId||'';document.getElementById('goal-desc').value=g?.desc||'';document.getElementById('goal-date').value=g?.deadline||'';document.getElementById('goal-bpm').value=g?.bpmTarget||'';document.getElementById('goal-modal').classList.add('open');}
 async function saveGoal(){const exId=parseInt(document.getElementById('goal-ex-sel').value),deadline=document.getElementById('goal-date').value;if(!exId||!deadline){showToast('Selecione exercício e data.','info');return;}const goal={id:editingGoalId||Date.now(),exId,desc:document.getElementById('goal-desc').value.trim(),deadline,bpmTarget:parseInt(document.getElementById('goal-bpm').value)||null,done:false,createdAt:dateStr(new Date())};const idx=goals.findIndex(g=>g.id===goal.id);if(idx>-1)goals[idx]=goal;else goals.push(goal);await syncGoal(goal);closeModal('goal-modal');showToast('Meta salva!','success');renderGoals();renderDash();}
 async function completeGoal(id){const g=goals.find(g=>g.id===id);if(!g)return;g.done=true;await syncGoal(g);showToast('Meta concluída! 🎉','success');renderGoals();renderDash();}
-async function deleteGoal(id){if(!confirm('Excluir meta?'))return;goals=goals.filter(g=>g.id!==id);await FB.del(`goals/${id}`).catch(()=>{});saveAll();renderGoals();renderDash();}
+async function deleteGoal(id){if(!confirm('Excluir meta?'))return;goals=goals.filter(g=>g.id!==id);await FB.del(`goals/${id}`).catch(()=>{});saveAll();showToast('Meta excluída.','info');renderGoals();renderDash();}
 
 function renderGoals(){
   const list=document.getElementById('goals-list');
   const filtered=goals.filter(g=>_goalTab==='active'?!g.done:g.done);
   if(!filtered.length){list.innerHTML=`<div class="goal-empty">${_goalTab==='active'?'Nenhuma meta ativa. Crie uma! 🎯':'Nenhuma meta concluída ainda.'}</div>`;return;}
-  list.innerHTML=filtered.map(g=>{const ex=exercises.find(e=>e.id===g.exId);const d=diffDays(new Date(),new Date(g.deadline));const isLate=d<0&&!g.done,isWarn=d>=0&&d<=7&&!g.done;const sess=history.filter(h=>h.exId===g.exId&&h.bpm);const curBpm=sess.length?sess[0].bpm:0;const pct=g.bpmTarget&&curBpm?Math.min(100,Math.round((curBpm/g.bpmTarget)*100)):0;
+  list.innerHTML=filtered.map(g=>{const ex=exercises.find(e=>e.id===g.exId);const d=diffDays(new Date(),new Date(g.deadline));const isLate=d<0&&!g.done,isWarn=d>=0&&d<=7&&!g.done;const sess=history.filter(h=>h.exId===g.exId&&h.bpm>0).sort((a,b)=>(b.isoDate||b.date||'').localeCompare(a.isoDate||a.date||''));const curBpm=sess.length?sess[0].bpm:0;const pct=g.bpmTarget&&curBpm?Math.min(100,Math.round((curBpm/g.bpmTarget)*100)):0;
     return`<div class="goal-card${isLate?' late':isWarn?' warn':''}${g.done?' done-goal':''}"><div class="goal-header"><div class="goal-name">${g.desc||ex?.name||'Meta'}</div><div style="display:flex;gap:5px">${!g.done?`<button class="btn xs" onclick="openGoalModal(${g.id})">Editar</button>`:''}<button class="btn xs danger" onclick="deleteGoal(${g.id})">✕</button></div></div><div class="goal-meta">${ex?diffPill(ex.diff):''}<span style="font-size:11px;color:var(--muted)">${ex?.name||''}</span><span class="deadline-badge ${isLate?'deadline-late':isWarn?'deadline-warn':'deadline-ok'}">${g.done?'✓':isLate?`${Math.abs(d)}d atrasada`:d===0?'Hoje':`${d}d`}</span><span class="goal-deadline">📅 ${formatPT(g.deadline)}</span></div>${g.bpmTarget?`<div class="goal-progress-bar"><div class="goal-progress-fill" style="width:${pct}%"></div></div><div class="goal-progress-label"><span>Atual: ${curBpm||'—'} bpm</span><span>Alvo: ${g.bpmTarget} (${pct}%)</span></div>`:''} ${!g.done?`<div class="goal-actions"><button class="btn pri sm" onclick="completeGoal(${g.id})">Concluir</button></div>`:''}</div>`;
   }).join('');
 }
@@ -661,11 +693,12 @@ function renderHist(){
 }
 
 function calcStreak(){
+  if(!history.length)return{current:0,record:0};
   const today=new Date();today.setHours(0,0,0,0);
-  const days=new Set(history.map(h=>h.isoDate||h.date.split('/').reverse().join('-')));
-  let cur=0,rec=0,i=0;
-  while(true){const d=new Date(today);d.setDate(d.getDate()-i);const ds=dateStr(d);if(days.has(ds)){cur++;i++;}else if(i===0){i++;}else break;}
-  let con=0;[...days].sort().forEach((ds,idx,arr)=>{if(idx===0){con=1;return;}const p=new Date(arr[idx-1]);p.setDate(p.getDate()+1);con=dateStr(p)===ds?con+1:1;rec=Math.max(rec,con);});
+  const days=new Set(history.map(h=>h.isoDate||(h.date||'').split('/').reverse().join('-')).filter(Boolean));
+  let cur=0,i=0;
+  while(i<3650){const d=new Date(today);d.setDate(d.getDate()-i);const ds=dateStr(d);if(days.has(ds)){cur++;i++;}else if(i===0){i++;}else break;}
+  let con=0,rec=0;[...days].sort().forEach((ds,idx,arr)=>{if(idx===0){con=1;return;}const p=new Date(arr[idx-1]);p.setDate(p.getDate()+1);con=dateStr(p)===ds?con+1:1;rec=Math.max(rec,con);});
   return{current:cur,record:Math.max(rec,cur)};
 }
 
@@ -703,8 +736,10 @@ function renderBpmChart(){
   if(!exName){area.innerHTML='<div class="bpm-no-data">Selecione um exercício</div>';return;}
   const data=history.filter(h=>h.ex===exName&&h.bpm).sort((a,b)=>(a.isoDate||a.date).localeCompare(b.isoDate||b.date));
   if(data.length<2){area.innerHTML='<div class="bpm-no-data">Mínimo 2 sessões com BPM registrado</div>';return;}
-  const W=400,H=90,P=26,bpms=data.map(d=>d.bpm),minB=Math.min(...bpms)-5,maxB=Math.max(...bpms)+5;
-  const xS=i=>P+(i/(data.length-1))*(W-P*2),yS=v=>H-P-((v-minB)/(maxB-minB))*(H-P*2);
+  const W=400,H=90,P=26,bpms=data.map(d=>d.bpm);
+  const rawMin=Math.min(...bpms),rawMax=Math.max(...bpms);
+  const minB=rawMin-(rawMax===rawMin?10:5),maxB=rawMax+(rawMax===rawMin?10:5);
+  const xS=i=>P+(i/(data.length-1))*(W-P*2),yS=v=>maxB===minB?(H-P)/2:H-P-((v-minB)/(maxB-minB))*(H-P*2);
   const pts=data.map((d,i)=>({x:xS(i),y:yS(d.bpm),bpm:d.bpm,date:d.date||formatPT(d.isoDate)}));
   const path='M'+pts.map(p=>`${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' L');
   area.innerHTML=`<div class="bpm-chart-wrap"><svg class="bpm-chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none"><path d="${path}" fill="none" stroke="var(--acc)" stroke-width="2" stroke-linejoin="round"/><path d="${path} L${pts[pts.length-1].x},${H} L${pts[0].x},${H} Z" fill="var(--acc)" opacity=".08"/>${pts.map(p=>`<circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="3.5" fill="var(--acc)"><title>${p.date}: ${p.bpm}bpm</title></circle>`).join('')}<text x="${P}" y="${H-2}" font-size="9" fill="var(--muted)" font-family="DM Mono">${data[0].date||formatPT(data[0].isoDate)}</text><text x="${W-P}" y="${H-2}" font-size="9" fill="var(--muted)" text-anchor="end" font-family="DM Mono">${data[data.length-1].date||formatPT(data[data.length-1].isoDate)}</text></svg><div style="font-size:11px;color:var(--muted);margin-top:4px;text-align:right">${bpms[0]}bpm → <strong style="color:var(--acc)">${bpms[bpms.length-1]}bpm</strong>${bpms[bpms.length-1]>bpms[0]?` <span style="color:#166534">▲ +${bpms[bpms.length-1]-bpms[0]}</span>`:''}</div></div>`;
@@ -718,7 +753,13 @@ function switchTab(tab, btn, bnavId){
   currentTab=tab;
   document.querySelectorAll('.tab').forEach(b=>b.classList.remove('on'));
   document.querySelectorAll('.bnav-item').forEach(b=>b.classList.remove('on'));
-  if(btn)btn.classList.add('on');
+  if(btn){btn.classList.add('on');}
+  else{
+    // Ao navegar pelo bottom nav, ativa também o botão desktop correspondente
+    document.querySelectorAll('.tab').forEach(b=>{
+      if(b.getAttribute('onclick')&&b.getAttribute('onclick').includes(`'${tab}'`))b.classList.add('on');
+    });
+  }
   if(bnavId)document.getElementById(`bnav-${bnavId}`)?.classList.add('on');
   Object.entries(TABS).forEach(([k,id])=>document.getElementById(id).style.display=k===tab?'block':'none');
   if(tab==='dash')   renderDash();

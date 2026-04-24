@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.google.com wss://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; frame-src https://guitarra-studio.firebaseapp.com https://accounts.google.com;">
 <title>Guitarra Studio</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -36,28 +37,66 @@ const col = p => collection(db,'users',window._uid,...p.split('/'));
 const ref = p => doc(db,'users',window._uid,...p.split('/'));
 
 window.FB = {
-  async save(path,data){ if(!window._db||!window._uid)return; await setDoc(ref(path),{...data,_at:serverTimestamp()}); },
-  async del(path){       if(!window._db||!window._uid)return; await deleteDoc(ref(path)); },
-  async loadAll(p){ if(!window._db||!window._uid)return null; try{ return(await getDocs(col(p))).docs.map(d=>d.data()); }catch{ return null; }},
-  async loadOrdered(p,f){ if(!window._db||!window._uid)return null; try{ return(await getDocs(query(col(p),orderBy(f,'desc')))).docs.map(d=>d.data()); }catch{ return null; }},
+  async save(path,data){
+    const uid=window._uid,db=window._db;
+    if(!db||!uid||uid==='offline')return;
+    const r=doc(db,'users',uid,...path.split('/'));
+    await setDoc(r,{...data,_at:serverTimestamp()});
+  },
+  async del(path){
+    const uid=window._uid,db=window._db;
+    if(!db||!uid||uid==='offline')return;
+    const r=doc(db,'users',uid,...path.split('/'));
+    await deleteDoc(r);
+  },
+  async loadAll(p){
+    const uid=window._uid,db=window._db;
+    if(!db||!uid||uid==='offline')return null;
+    try{ return(await getDocs(collection(db,'users',uid,...p.split('/')))).docs.map(d=>d.data()); }catch(e){ console.warn('loadAll error:',e);return null; }
+  },
+  async loadOrdered(p,f){
+    const uid=window._uid,db=window._db;
+    if(!db||!uid||uid==='offline')return null;
+    try{ return(await getDocs(query(collection(db,'users',uid,...p.split('/')),orderBy(f,'desc')))).docs.map(d=>d.data()); }catch(e){ console.warn('loadOrdered error:',e);return null; }
+  },
 };
 
 window.AUTH = {
-  async loginGoogle(){ try{ await signInWithPopup(auth,provider); }catch(e){ console.warn(e); window.dispatchEvent(new CustomEvent('auth-error',{detail:e.message})); }},
-  async logout(){ await signOut(auth); window._uid=null; window._db=null; window.dispatchEvent(new Event('auth-logout')); }
+  async loginGoogle(){
+    const btns=document.querySelectorAll('.login-google-btn');
+    btns.forEach(b=>{b.disabled=true;b.style.opacity='.6';});
+    try{
+      await signInWithPopup(auth,provider);
+    }catch(e){
+      if(e.code==='auth/popup-blocked'){
+        window.dispatchEvent(new CustomEvent('auth-error',{detail:'Popup bloqueado pelo navegador. Permita popups para este site.'}));
+      }else if(e.code==='auth/popup-closed-by-user'||e.code==='auth/cancelled-popup-request'){
+        // usuário fechou — não mostrar erro
+      }else if(e.code==='auth/network-request-failed'){
+        window.dispatchEvent(new CustomEvent('auth-error',{detail:'Sem conexão com a internet.'}));
+      }else{
+        console.warn(e);
+        window.dispatchEvent(new CustomEvent('auth-error',{detail:e.message}));
+      }
+    }finally{
+      const btns=document.querySelectorAll('.login-google-btn');
+      btns.forEach(b=>{b.disabled=false;b.style.opacity='';});
+    }
+  },
+  async logout(){ try{ await signOut(auth); }catch(e){ console.warn('Erro ao sair:',e); } window._uid=null; window._db=null; window._user=null; window.dispatchEvent(new Event('auth-logout')); }
 };
 
 onAuthStateChanged(auth, user => {
   if(user){
     window._uid = user.uid;
     window._db  = db;
-    window._user = { name: user.displayName, email: user.email, photo: user.photoURL };
+    window._user = { displayName: user.displayName, email: user.email||'', photoURL: user.photoURL||'' };
     window.dispatchEvent(new CustomEvent('firebase-ready', { detail: { user } }));
   } else {
     window._uid  = null;
     window._db   = null;
     window._user = null;
-    window.dispatchEvent(new Event('firebase-signout'));
+    window.dispatchEvent(new CustomEvent('auth-logout',{detail:{reason:'signout'}}));
   }
 });
 </script>
