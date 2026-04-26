@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.google.com wss://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; frame-src https://guitarra-studio.firebaseapp.com https://accounts.google.com;">
 <title>Guitarra Studio</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -61,6 +61,7 @@ window.FB = {
   },
 };
 
+window._auth = auth;
 window.AUTH = {
   async loginGoogle(){
     const btns=document.querySelectorAll('.login-google-btn');
@@ -127,7 +128,7 @@ onAuthStateChanged(auth, user => {
       <div class="login-field">
         <div class="login-field-header">
           <label for="lp-password">Senha</label>
-          <a href="#" class="login-forgot" onclick="return false;">Esqueci minha senha</a>
+          <a href="#" class="login-forgot" onclick="loginForgotPassword();return false;">Esqueci minha senha</a>
         </div>
         <div class="login-input-wrap">
           <input class="login-input login-has-toggle" type="password" id="lp-password" placeholder="Sua senha" autocomplete="current-password">
@@ -193,9 +194,9 @@ onAuthStateChanged(auth, user => {
   <div class="topbar-right">
     <div class="sync-status tab-desktop-only"><div class="sync-dot syncing" id="sync-dot"></div><span id="sync-label">…</span></div>
     <span class="topbar-date tab-desktop-only" id="tb-date"></span>
-    <button class="icon-btn" onclick="toggleDark()" title="Modo escuro (D)">🌙</button>
-    <button class="icon-btn" onclick="togglePalette()" title="Paleta de cores">🎨</button>
-    <button class="icon-btn tab-desktop-only" onclick="exportData()" title="Exportar dados">⬇</button>
+    <button class="icon-btn" onclick="toggleDark()" title="Modo escuro (D)" aria-label="Alternar modo escuro">🌙</button>
+    <button class="icon-btn" onclick="togglePalette()" title="Paleta de cores" aria-label="Escolher paleta de cores">🎨</button>
+    <button class="icon-btn tab-desktop-only" onclick="exportData()" title="Exportar dados" aria-label="Exportar dados">⬇</button>
     <div class="user-avatar" id="user-avatar" onclick="toggleUserMenu()">?</div>
   </div>
 </header>
@@ -208,6 +209,7 @@ onAuthStateChanged(auth, user => {
   <div class="palette-option" data-theme="slate" onclick="setPalette('slate',this)"><div class="palette-swatch"><span style="background:#1E293B"></span><span style="background:#334155"></span><span style="background:#F1F5F9"></span></div><div><div class="palette-name">⚫ Grafite</div></div></div>
   <div class="palette-option" data-theme="wine" onclick="setPalette('wine',this)"><div class="palette-swatch"><span style="background:#6B0F25"></span><span style="background:#9F1239"></span><span style="background:#FFF1F2"></span></div><div><div class="palette-name">🍷 Vinho</div></div></div>
   <div class="palette-option" data-theme="midnight" onclick="setPalette('midnight',this)"><div class="palette-swatch"><span style="background:#312E81"></span><span style="background:#4F46E5"></span><span style="background:#EEF2FF"></span></div><div><div class="palette-name">🌙 Meia-Noite</div></div></div>
+  <div class="palette-option" data-theme="metal" onclick="setPalette('metal',this)"><div class="palette-swatch"><span style="background:#0A0A0A"></span><span style="background:#3A3A3A"></span><span style="background:#E0E0E0"></span></div><div><div class="palette-name">🤘 Metal</div></div></div>
 </div>
 
 <!-- User menu -->
@@ -216,6 +218,7 @@ onAuthStateChanged(auth, user => {
     <div class="user-menu-name" id="um-name">Usuário</div>
     <div class="user-menu-email" id="um-email"></div>
   </div>
+  <div class="user-menu-item" onclick="importData()">⬆ Importar backup (JSON)</div>
   <div class="user-menu-item" onclick="exportData()">⬇ Exportar dados (JSON)</div>
   <div class="user-menu-item" onclick="exportData('csv')">⬇ Exportar histórico (CSV)</div>
   <div class="user-menu-item danger" onclick="confirmLogout()">↩ Sair da conta</div>
@@ -227,27 +230,173 @@ onAuthStateChanged(auth, user => {
   <button class="btn sm" style="margin-left:auto" onclick="dismissInactivity()">Dispensar</button>
 </div>
 
-<!-- Pomodoro -->
-<div class="pomobar">
-  <div class="pcirc"><svg width="44" height="44"><circle cx="22" cy="22" r="19" fill="none" stroke="var(--border)" stroke-width="2.5"/><circle cx="22" cy="22" r="19" fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-dasharray="119" stroke-dashoffset="119" id="p-arc" stroke-linecap="round"/></svg><div class="ptime" id="p-time">25:00</div></div>
-  <div class="pmeta"><div class="pphase" id="p-phase">Foco</div><div class="pex" id="p-ex">Selecione um exercício</div></div>
-  <div class="pdots" id="p-dots"></div>
-  <button class="btn pri" id="p-btn" onclick="togglePomo()">Iniciar <span class="kbd tab-desktop-only">Space</span></button>
-  <button class="btn" onclick="resetPomo()">↺</button>
-  <button class="cfg-tog" id="cfg-btn" onclick="toggleCfg()">⚙</button>
+<!-- ════ ONBOARDING ════ -->
+<div id="onboarding-overlay" class="onboarding-overlay hidden">
+  <div class="onboarding-card">
+
+    <!-- Step 1: Boas-vindas -->
+    <div class="ob-step" id="ob-step-1">
+      <div class="ob-icon">🎸</div>
+      <div class="ob-title">Bem-vindo ao Guitarra Studio!</div>
+      <div class="ob-sub">Seu diário de prática. Vamos configurar tudo em 3 passos.</div>
+      <div class="ob-level-grid">
+        <button class="ob-level-btn" onclick="obSetLevel(1)">
+          <span class="ob-level-icon">🌱</span>
+          <span class="ob-level-name">Iniciante</span>
+          <span class="ob-level-desc">Estou começando agora</span>
+        </button>
+        <button class="ob-level-btn" onclick="obSetLevel(2)">
+          <span class="ob-level-icon">🎵</span>
+          <span class="ob-level-name">Intermediário</span>
+          <span class="ob-level-desc">Toco há algum tempo</span>
+        </button>
+        <button class="ob-level-btn" onclick="obSetLevel(3)">
+          <span class="ob-level-icon">🔥</span>
+          <span class="ob-level-name">Avançado</span>
+          <span class="ob-level-desc">Quero desafios maiores</span>
+        </button>
+      </div>
+      <button class="ob-skip" onclick="obSkip()">Já sei usar, pular →</button>
+    </div>
+
+    <!-- Step 2: Nome do ciclo -->
+    <div class="ob-step hidden" id="ob-step-2">
+      <div class="ob-icon">📚</div>
+      <div class="ob-title">Como você quer chamar sua fase de estudo?</div>
+      <div class="ob-sub">Um <strong>ciclo</strong> é uma fase. Ex: "Fundamentos", "Blues", "Metal Técnico".</div>
+      <div class="ob-input-wrap">
+        <input class="ob-input" id="ob-cycle-name" type="text" placeholder='Ex: "Fundamentos de Guitarra"' maxlength="50">
+      </div>
+      <div class="ob-presets">
+        <span class="ob-preset" onclick="document.getElementById('ob-cycle-name').value=this.textContent">Fundamentos</span>
+        <span class="ob-preset" onclick="document.getElementById('ob-cycle-name').value=this.textContent">Blues Básico</span>
+        <span class="ob-preset" onclick="document.getElementById('ob-cycle-name').value=this.textContent">Técnica Metal</span>
+        <span class="ob-preset" onclick="document.getElementById('ob-cycle-name').value=this.textContent">Fingerpicking</span>
+        <span class="ob-preset" onclick="document.getElementById('ob-cycle-name').value=this.textContent">Improvisação</span>
+      </div>
+      <button class="btn pri ob-next" onclick="obStep3()">Continuar →</button>
+      <button class="ob-back" onclick="obGoStep(1)">← Voltar</button>
+    </div>
+
+    <!-- Step 3: Tudo pronto -->
+    <div class="ob-step hidden" id="ob-step-3">
+      <div class="ob-icon">✅</div>
+      <div class="ob-title">Tudo pronto!</div>
+      <div class="ob-summary" id="ob-summary"></div>
+      <div class="ob-how">
+        <div class="ob-how-item"><span class="ob-how-num">1</span><span>Vá ao <strong>Quadro</strong> e veja seus exercícios</span></div>
+        <div class="ob-how-item"><span class="ob-how-num">2</span><span>Clique num exercício para <strong>focar</strong> nele</span></div>
+        <div class="ob-how-item"><span class="ob-how-num">3</span><span>Volte ao <strong>Início</strong> e pressione <strong>Praticar agora</strong></span></div>
+      </div>
+      <button class="btn pri ob-next" onclick="obFinish()" style="width:100%">🎸 Começar a praticar!</button>
+    </div>
+
+  </div>
 </div>
-<div class="cfg-panel" id="cfg-panel">
-  <div class="cfg-field"><label>Foco</label><input type="number" id="cfg-work" value="25" min="1" max="90" onchange="applyConfig()"></div>
-  <div class="cfg-field"><label>Curto</label><input type="number" id="cfg-short" value="5" min="1" max="30" onchange="applyConfig()"></div>
-  <div class="cfg-field"><label>Longo</label><input type="number" id="cfg-long" value="15" min="1" max="60" onchange="applyConfig()"></div>
-  <div class="cfg-field"><label>Ciclos</label><input type="number" id="cfg-cyc" value="4" min="1" max="10" onchange="applyConfig()"></div>
-  <div class="snd-row"><label class="snd-lbl"><input type="checkbox" id="snd" checked> Alerta</label><label class="snd-lbl"><input type="checkbox" id="snd-tick"> Tique-taque</label></div>
+
+<!-- ════ BARRA DE PRÁTICA ════ -->
+<div class="pratica-bar" id="pratica-bar">
+
+  <!-- Linha compacta (sempre visível) -->
+  <div class="pratica-top">
+    <!-- Timer -->
+    <div class="pratica-timer-wrap">
+      <div class="pcirc">
+        <svg width="44" height="44"><circle cx="22" cy="22" r="19" fill="none" stroke="var(--border)" stroke-width="2.5"/><circle cx="22" cy="22" r="19" fill="none" stroke="var(--acc)" stroke-width="2.5" stroke-dasharray="119" stroke-dashoffset="119" id="p-arc" stroke-linecap="round"/></svg>
+        <div class="ptime" id="p-time">25:00</div>
+      </div>
+      <div class="pratica-timer-meta">
+        <div class="pphase" id="p-phase">Foco</div>
+        <div class="pdots" id="p-dots"></div>
+      </div>
+    </div>
+
+    <!-- Exercício em foco -->
+    <div class="pratica-ex-info">
+      <div class="pratica-ex-label">Praticando agora <span style="font-size:10px;color:var(--muted)">(clique em Painel para metrônomo e config)</span></div>
+      <div class="pex" id="p-ex">Selecione um exercício no Quadro para começar</div>
+    </div>
+
+    <!-- Controles principais -->
+    <div class="pratica-controls">
+      <button class="btn pri" id="p-btn" onclick="togglePomo()">▶ Iniciar <span class="kbd tab-desktop-only">Space</span></button>
+      <button class="btn" onclick="resetPomo()" aria-label="Reiniciar" title="Reiniciar">↺</button>
+      <button class="pratica-expand-btn" id="pratica-expand-btn" onclick="togglePraticaPanel()" title="Expandir painel de prática" aria-label="Abrir painel completo">
+        <span id="pratica-expand-icon">▾</span> Painel
+      </button>
+    </div>
+  </div>
+
+  <!-- Painel expandido (metrônomo + config integrados) -->
+  <div class="pratica-panel" id="pratica-panel">
+
+    <!-- Coluna 1: Metrônomo -->
+    <div class="pratica-col">
+      <div class="pratica-col-title">🥁 Metrônomo</div>
+      <div class="metro-inline">
+        <div class="metro-bpm-row">
+          <button class="metro-bpm-btn" onclick="changeBpm(-5)" title="-5 BPM">▼</button>
+          <div class="metro-bpm-num" id="metro-num">80</div>
+          <button class="metro-bpm-btn" onclick="changeBpm(+5)" title="+5 BPM">▲</button>
+          <span class="metro-bpm-label">BPM</span>
+        </div>
+        <input type="range" class="metro-slider" min="30" max="240" value="80" id="metro-slider" oninput="setBpm(parseInt(this.value))" aria-label="BPM">
+        <div class="metro-beats" id="metro-beats">
+          <div class="metro-beat accent" id="mb-0"></div>
+          <div class="metro-beat" id="mb-1"></div>
+          <div class="metro-beat" id="mb-2"></div>
+          <div class="metro-beat" id="mb-3"></div>
+        </div>
+        <div class="metro-bottom-row">
+          <button class="btn pri sm" id="metro-play-btn" onclick="toggleMetro()">▶ Iniciar</button>
+          <button class="btn sm metro-tap" onclick="tapTempo()" title="Toque no ritmo para detectar BPM">Tap BPM</button>
+          <select onchange="metroBeats=parseInt(this.value);renderMetroBeats()" aria-label="Compasso" style="padding:4px 8px;border:1px solid var(--border);border-radius:var(--radius);font-size:12px;font-family:var(--font-ui);background:var(--bg-card);color:var(--text);">
+            <option value="2">2/4</option><option value="3">3/4</option><option value="4" selected>4/4</option><option value="6">6/8</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- Coluna 2: Timer config -->
+    <div class="pratica-col">
+      <div class="pratica-col-title">⏱ Configurar timer</div>
+      <div class="pratica-cfg-grid">
+        <div class="cfg-field"><label>Foco (min)</label><input type="number" id="cfg-work" value="25" min="1" max="90"></div>
+        <div class="cfg-field"><label>Pausa curta</label><input type="number" id="cfg-short" value="5" min="1" max="30"></div>
+        <div class="cfg-field"><label>Pausa longa</label><input type="number" id="cfg-long" value="15" min="1" max="60"></div>
+        <div class="cfg-field"><label>Ciclos</label><input type="number" id="cfg-cyc" value="4" min="1" max="10"></div>
+      </div>
+      <button class="btn pri sm" onclick="applyConfig()" style="margin-top:8px;width:100%">✓ Aplicar configuração</button>
+      <div class="pratica-cfg-sounds">
+        <label class="snd-lbl"><input type="checkbox" id="snd" checked> Som ao encerrar</label>
+        <label class="snd-lbl"><input type="checkbox" id="snd-tick"> Tique-taque final</label>
+      </div>
+    </div>
+
+    <!-- Coluna 3: Sessão rápida -->
+    <div class="pratica-col">
+      <div class="pratica-col-title">📝 Registrar sessão</div>
+      <div id="pratica-session-area">
+        <div style="font-size:12px;color:var(--muted);text-align:center;padding:16px 0">
+          Selecione um exercício no <strong>Quadro</strong> para registrar a sessão
+        </div>
+      </div>
+    </div>
+
+  </div>
 </div>
 
 <div class="toast-container" id="toast-container"></div>
 
 <!-- ════ TABS ════ -->
-<main id="tab-dash"><div class="dash-wrap"><div id="dash-cycle-banner"></div><div class="dash-stats" id="dash-stats"></div><div id="dash-urgent"></div><div id="dash-focus-area"></div><div id="dash-next-area"></div></div></main>
+<main id="tab-dash"><div class="dash-wrap">
+  <div id="dash-cycle-banner"></div>
+  <div class="dash-stats" id="dash-stats"></div>
+  <div id="dash-urgent"></div>
+  <div id="dash-focus-area"></div>
+  <div id="dash-next-area"></div>
+  <div id="dash-today-agenda"></div>
+</div></main>
 
 <section id="tab-board" style="display:none">
   <div class="board-wrap-outer">
@@ -256,9 +405,27 @@ onAuthStateChanged(auth, user => {
   </div>
 </section>
 
-<section id="tab-cycles" style="display:none"><div class="cycles-wrap"><div class="cycles-header"><div class="cycles-title">📚 Ciclos de estudo</div><button class="btn pri" onclick="openCycleModal()">+ Novo ciclo</button></div><div id="cycles-list"></div></div></section>
+<section id="tab-cycles" style="display:none"><div class="cycles-wrap">
+  <div class="cycles-header"><div class="cycles-title">📚 Ciclos de estudo</div><button class="btn pri" onclick="openCycleModal()">+ Novo ciclo</button></div>
+  <div class="cycles-explainer" id="cycles-explainer">
+    <button class="cycles-explainer-close" onclick="document.getElementById('cycles-explainer').style.display='none'" title="Fechar">✕</button>
+    <div class="cycles-explainer-title">💡 Como funcionam os ciclos?</div>
+    <div class="cycles-explainer-steps">
+      <div class="cycles-step"><div class="cycles-step-num">1</div><div><strong>Crie um ciclo</strong> com nome, datas e objetivo — ex: "Fundamentos — 4 semanas"</div></div>
+      <div class="cycles-step"><div class="cycles-step-num">2</div><div><strong>Adicione exercícios no Quadro</strong> — eles entram automaticamente no ciclo ativo</div></div>
+      <div class="cycles-step"><div class="cycles-step-num">3</div><div><strong>Pratique e marque como concluídos</strong> — o ciclo mostra seu progresso em %</div></div>
+      <div class="cycles-step"><div class="cycles-step-num">4</div><div><strong>Encerre o ciclo</strong> ao terminar — tudo fica arquivado e você começa um novo</div></div>
+    </div>
+  </div>
+  <div id="cycles-list"></div></div></section>
 
-<section id="tab-agenda" style="display:none"><div class="agenda-wrap"><div class="agenda-title">Agenda semanal<div class="agenda-week-nav"><button class="btn sm" onclick="agendaWeek(-1)">‹</button><span class="agenda-week-label" id="agenda-week-label"></span><button class="btn sm" onclick="agendaWeek(+1)">›</button></div></div><div class="agenda-grid" id="agenda-grid"></div></div></section>
+<section id="tab-agenda" style="display:none"><div class="agenda-wrap">
+  <div class="agenda-banner" id="agenda-banner">
+    <button onclick="document.getElementById('agenda-banner').style.display='none'" style="position:absolute;top:8px;right:10px;background:none;border:none;cursor:pointer;font-size:14px;color:var(--muted)">✕</button>
+    <strong>📅 Como usar a Agenda:</strong> Arraste um exercício do Quadro para um dia da semana, ou clique em <strong>+</strong> para adicionar. O Quadro organiza <em>o que</em> você estuda — a Agenda organiza <em>quando</em>.
+  </div>
+  <div class="agenda-title">📅 Agenda semanal
+  <span class="agenda-help" title="A Agenda define em quais DIAS DA SEMANA você vai praticar. O Quadro define a progressão de dificuldade por fases.">❓</span> <span class="agenda-tip" title="Aqui você define QUANDO vai praticar cada exercício durante a semana. O Quadro organiza a progressão de dificuldade (semana 1, 2, 3...). A Agenda organiza os dias que você vai praticar.">ⓘ</span><div class="agenda-week-nav"><button class="btn sm" onclick="agendaWeek(-1)">‹</button><span class="agenda-week-label" id="agenda-week-label"></span><button class="btn sm" onclick="agendaWeek(+1)">›</button></div></div><div class="agenda-grid" id="agenda-grid"></div></div></section>
 
 <section id="tab-goals" style="display:none"><div class="goals-wrap"><div class="goals-header"><div class="goals-title">🎯 Metas</div><button class="btn pri" onclick="openGoalModal()">+ Nova meta</button></div><div class="goal-tabs"><button class="goal-tab on" onclick="setGoalTab('active',this)">Ativas</button><button class="goal-tab" onclick="setGoalTab('done',this)">Concluídas</button></div><div id="goals-list"></div></div></section>
 
@@ -286,8 +453,8 @@ onAuthStateChanged(auth, user => {
 <!-- ════ MODAIS ════ -->
 <div class="modal-overlay" id="edit-modal" onclick="if(event.target===this)closeModal('edit-modal')">
   <div class="modal"><div class="modal-title">Editar exercício</div>
-    <div class="modal-field"><label>Nome</label><input type="text" id="edit-name"></div>
-    <div class="modal-field"><label>Descrição</label><textarea id="edit-desc"></textarea></div>
+    <div class="modal-field"><label>Nome</label><input type="text" id="edit-name" maxlength="80"></div>
+    <div class="modal-field"><label>Descrição</label><textarea id="edit-desc" maxlength="500"></textarea></div>
     <div class="modal-row">
       <div class="modal-field"><label>Semana</label><select id="edit-week"><option value="0">Semana 1</option><option value="1">Semana 2</option><option value="2">Semana 3</option><option value="3">Semana 4</option></select></div>
       <div class="modal-field"><label>Dificuldade</label><select id="edit-diff"><option value="1">1 — Iniciante</option><option value="2">2 — Básico</option><option value="3">3 — Intermediário</option><option value="4">4 — Avançado</option><option value="5">5 — Expert</option></select></div>
@@ -298,7 +465,7 @@ onAuthStateChanged(auth, user => {
 
 <div class="modal-overlay" id="cycle-modal" onclick="if(event.target===this)closeModal('cycle-modal')">
   <div class="modal"><div class="modal-title" id="cycle-modal-title">Novo ciclo</div>
-    <div class="modal-field"><label>Nome</label><input type="text" id="cycle-name" placeholder="Ex: Fundamentos, Blues, Técnica Avançada..."></div>
+    <div class="modal-field"><label>Nome</label><input type="text" id="cycle-name" placeholder="Ex: Fundamentos, Blues, Técnica Avançada..." maxlength="60"></div>
     <div class="modal-field"><label>Descrição</label><textarea id="cycle-desc" placeholder="Objetivos e foco deste ciclo..."></textarea></div>
     <div class="modal-row"><div class="modal-field"><label>Início</label><input type="date" id="cycle-start"></div><div class="modal-field"><label>Previsão fim</label><input type="date" id="cycle-end"></div></div>
     <div class="modal-field"><label>Ícone</label><select id="cycle-icon"><option value="🎸">🎸 Guitarra</option><option value="🎵">🎵 Música</option><option value="🔥">🔥 Intenso</option><option value="🌱">🌱 Iniciante</option><option value="⚡">⚡ Avançado</option><option value="🎯">🎯 Foco</option><option value="🏆">🏆 Desafio</option><option value="📚">📚 Estudo</option></select></div>
@@ -309,7 +476,7 @@ onAuthStateChanged(auth, user => {
 <div class="modal-overlay" id="goal-modal" onclick="if(event.target===this)closeModal('goal-modal')">
   <div class="modal"><div class="modal-title" id="goal-modal-title">Nova meta</div>
     <div class="modal-field"><label>Exercício</label><select id="goal-ex-sel"><option value="">Selecione...</option></select></div>
-    <div class="modal-field"><label>Descrição</label><textarea id="goal-desc" placeholder="Ex: Tocar a escala a 120 bpm com clareza total"></textarea></div>
+    <div class="modal-field"><label>Descrição</label><textarea id="goal-desc" placeholder="Ex: Tocar a escala a 120 bpm com clareza total" maxlength="300"></textarea></div>
     <div class="modal-row"><div class="modal-field"><label>Data-alvo</label><input type="date" id="goal-date"></div><div class="modal-field"><label>BPM alvo</label><input type="number" id="goal-bpm" placeholder="Ex: 120" min="20" max="300"></div></div>
     <div class="modal-actions"><button class="btn ghost" onclick="closeModal('goal-modal')">Cancelar</button><button class="btn pri" onclick="saveGoal()">Salvar</button></div>
   </div>
@@ -348,14 +515,70 @@ function loginTogglePw(id, btn) {
   btn.querySelector('svg').innerHTML = show ? _EYE_OPEN : _EYE_CLOSED;
 }
 
-function loginHandleEmail() {
-  // TODO: integrar Firebase signInWithEmailAndPassword
-  showToast('Login por e-mail em breve!', 'info');
+async function loginHandleEmail() {
+  const email = document.getElementById('lp-email').value.trim();
+  const password = document.getElementById('lp-password').value;
+  if (!email || !email.includes('@')) { showToast('Digite um e-mail válido.', 'info'); return; }
+  if (!password) { showToast('Digite sua senha.', 'info'); return; }
+  const btn = document.querySelector('#lp-login .login-btn-primary');
+  btn.disabled = true; btn.textContent = 'Entrando…';
+  try {
+    const { signInWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+    // auth é exposto via window para uso externo
+    if (!window._auth) { showToast('Auth não inicializado.', 'info'); return; }
+    await signInWithEmailAndPassword(window._auth, email, password);
+  } catch(e) {
+    const msgs = {
+      'auth/user-not-found': 'Usuário não encontrado.',
+      'auth/wrong-password': 'Senha incorreta.',
+      'auth/invalid-credential': 'E-mail ou senha incorretos.',
+      'auth/too-many-requests': 'Muitas tentativas. Aguarde um momento.',
+      'auth/network-request-failed': 'Sem conexão com a internet.'
+    };
+    showToast(msgs[e.code] || 'Erro ao entrar: ' + e.message, 'info');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Entrar';
+  }
 }
 
-function loginHandleRegister() {
-  // TODO: integrar Firebase createUserWithEmailAndPassword
-  showToast('Cadastro em breve!', 'info');
+async function loginHandleRegister() {
+  const name     = document.getElementById('lp-name').value.trim();
+  const email    = document.getElementById('lp-reg-email').value.trim();
+  const password = document.getElementById('lp-reg-password').value;
+  if (!name)                        { showToast('Informe seu nome.', 'info'); return; }
+  if (!email || !email.includes('@')){ showToast('E-mail inválido.', 'info'); return; }
+  if (password.length < 6)          { showToast('Senha deve ter ao menos 6 caracteres.', 'info'); return; }
+  const btn = document.querySelector('#lp-register .login-btn-primary');
+  btn.disabled = true; btn.textContent = 'Criando conta…';
+  try {
+    const { createUserWithEmailAndPassword, updateProfile } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+    if (!window._auth) { showToast('Auth não inicializado.', 'info'); return; }
+    const cred = await createUserWithEmailAndPassword(window._auth, email, password);
+    await updateProfile(cred.user, { displayName: name });
+  } catch(e) {
+    const msgs = {
+      'auth/email-already-in-use': 'Este e-mail já está cadastrado.',
+      'auth/invalid-email': 'E-mail inválido.',
+      'auth/weak-password': 'Senha muito fraca. Use ao menos 6 caracteres.',
+      'auth/network-request-failed': 'Sem conexão com a internet.'
+    };
+    showToast(msgs[e.code] || 'Erro ao criar conta: ' + e.message, 'info');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Criar conta';
+  }
+}
+
+async function loginForgotPassword() {
+  const email = document.getElementById('lp-email').value.trim();
+  if (!email || !email.includes('@')) { showToast('Digite seu e-mail primeiro.', 'info'); return; }
+  try {
+    const { sendPasswordResetEmail } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+    if (!window._auth) { showToast('Auth não inicializado.', 'info'); return; }
+    await sendPasswordResetEmail(window._auth, email);
+    showToast('E-mail de recuperação enviado! Verifique sua caixa de entrada.', 'success');
+  } catch(e) {
+    showToast('Erro ao enviar: ' + e.message, 'info');
+  }
 }
 </script>
 </body>

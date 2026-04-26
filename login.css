@@ -206,6 +206,7 @@ body::before {
   outline: none;
   transition: border-color var(--t), box-shadow var(--t), background var(--t);
   -webkit-appearance: none;
+  appearance: none;
 }
 
 .login-input::placeholder { color: #B0A89E; }
