@@ -169,11 +169,298 @@ if(window._uid && window._uid !== 'offline'){
   loadAndInit();
 }
 
-function useOffline(){
-  document.getElementById('login-screen').classList.add('hidden');
-  window._uid='offline'; window._db=null; window._user=null;
-  updateUserUI(null);
-  loadAndInit();
+// Modo offline removido — autenticação obrigatória
+// function useOffline() removida por segurança
+
+// ════════════════════════════════════════
+// PERFIL DO USUÁRIO
+// ════════════════════════════════════════
+function openProfile(tab='info'){
+  const user = window._user;
+  if(!user) return;
+
+  // Preencher dados do usuário
+  const nameEl  = document.getElementById('pf-name');
+  const emailEl = document.getElementById('pf-email');
+  const bigAv   = document.getElementById('profile-avatar-big');
+  const nameDisp= document.getElementById('profile-display-name');
+  const emailDisp=document.getElementById('profile-email-display');
+  const badge   = document.getElementById('profile-provider-badge');
+
+  if(nameEl)   nameEl.value   = user.displayName||'';
+  if(emailEl)  emailEl.value  = user.email||'';
+  if(nameDisp) nameDisp.textContent = user.displayName||'Usuário';
+  if(emailDisp)emailDisp.textContent= user.email||'';
+
+  // Avatar grande
+  if(bigAv){
+    if(user.photoURL&&user.photoURL.startsWith('https://')){
+      bigAv.innerHTML=`<img src="${user.photoURL}" style="width:100%;height:100%;border-radius:50%;object-fit:cover" alt="Avatar" onerror="this.parentElement.textContent='${(user.displayName||'U')[0].toUpperCase()}'">`;
+    } else {
+      bigAv.textContent=(user.displayName||'U')[0].toUpperCase();
+    }
+  }
+
+  // Detectar provedor (Google vs e-mail)
+  const isGoogle = user.photoURL?.includes('googleusercontent');
+  if(badge) badge.textContent = isGoogle ? '🔵 Google' : '📧 E-mail';
+
+  // Mostrar/ocultar campos de senha conforme provedor
+  const pwSection = document.getElementById('pf-change-pw-section');
+  const pwHint    = document.getElementById('pf-pw-method-hint');
+  if(isGoogle && pwSection){
+    if(pwHint) pwHint.innerHTML='<span style="color:var(--muted);font-size:12px">Sua conta usa o Google para autenticar. Para alterar a senha acesse sua <a href="https://myaccount.google.com" target="_blank" style="color:var(--acc)">Conta Google</a>.</span>';
+    pwSection.querySelectorAll('input').forEach(i=>i.disabled=true);
+    pwSection.querySelector('button.btn.pri')?.setAttribute('disabled','');
+  } else {
+    if(pwHint) pwHint.innerHTML='';
+    pwSection?.querySelectorAll('input').forEach(i=>i.disabled=false);
+    pwSection?.querySelector('button.btn.pri')?.removeAttribute('disabled');
+  }
+
+  // Stats do perfil
+  const statsRow = document.getElementById('pf-stats-row');
+  if(statsRow){
+    const totalSess = history.length;
+    const totalDone = exercises.filter(e=>e.done).length;
+    const streak    = calcStreak().current;
+    const totalMin  = history.reduce((a,h)=>a+(h.duration||25),0);
+    statsRow.innerHTML=`
+      <div class="profile-stat"><div class="profile-stat-n">${totalSess}</div><div class="profile-stat-l">Sessões</div></div>
+      <div class="profile-stat"><div class="profile-stat-n">${totalDone}</div><div class="profile-stat-l">Dominados</div></div>
+      <div class="profile-stat"><div class="profile-stat-n">${streak}</div><div class="profile-stat-l">Streak dias</div></div>
+      <div class="profile-stat"><div class="profile-stat-n">${totalMin>=60?Math.round(totalMin/60)+'h':totalMin+'min'}</div><div class="profile-stat-l">Praticado</div></div>`;
+  }
+
+  // Data stats
+  const dataStats = document.getElementById('pf-data-stats');
+  if(dataStats){
+    dataStats.innerHTML=`
+      <div class="pf-data-item"><span>Exercícios</span><strong>${exercises.length}</strong></div>
+      <div class="pf-data-item"><span>Sessões no histórico</span><strong>${history.length}</strong></div>
+      <div class="pf-data-item"><span>Metas</span><strong>${goals.length}</strong></div>
+      <div class="pf-data-item"><span>Ciclos</span><strong>${cycles.length}</strong></div>`;
+  }
+
+  // Nível salvo
+  const savedLevel = LS.get('gs-user-level',0);
+  document.querySelectorAll('.profile-level-btn').forEach((b,i)=>{
+    b.classList.toggle('active', i+1===savedLevel);
+  });
+
+  // Instrumento salvo
+  const savedInstr = LS.get('gs-instrument','guitarra');
+  const instrSel = document.getElementById('pf-instrument');
+  if(instrSel) instrSel.value = savedInstr;
+
+  // Preferências do timer
+  const cfgWork  = document.getElementById('cfg-work');
+  const cfgShort = document.getElementById('cfg-short');
+  const cfgLong  = document.getElementById('cfg-long');
+  const cfgCyc   = document.getElementById('cfg-cyc');
+  if(document.getElementById('pref-work'))  document.getElementById('pref-work').value  = cfgWork?.value||25;
+  if(document.getElementById('pref-short')) document.getElementById('pref-short').value = cfgShort?.value||5;
+  if(document.getElementById('pref-long'))  document.getElementById('pref-long').value  = cfgLong?.value||15;
+  if(document.getElementById('pref-cyc'))   document.getElementById('pref-cyc').value   = cfgCyc?.value||4;
+
+  // Toggle dark
+  updatePrefsDarkToggle();
+
+  // Paleta de preferências
+  _buildPrefPalette();
+
+  // Toggle som
+  const sndEl = document.getElementById('pref-snd-toggle');
+  const sndOn = document.getElementById('snd')?.checked;
+  if(sndEl) sndEl.classList.toggle('active', sndOn);
+
+  openModal('profile-modal');
+  switchProfileTab(tab, document.querySelector(`.profile-tab:nth-child(${['info','senha','dados','prefs'].indexOf(tab)+1})`));
+}
+
+function switchProfileTab(tab, btn){
+  document.querySelectorAll('.profile-section').forEach(s=>s.classList.add('hidden'));
+  document.querySelectorAll('.profile-tab').forEach(b=>b.classList.remove('active'));
+  const el = document.getElementById(`ptab-${tab}`);
+  if(el) el.classList.remove('hidden');
+  if(btn) btn.classList.add('active');
+}
+
+async function saveProfileName(){
+  const name = document.getElementById('pf-name')?.value.trim().replace(/[<>"']/g,'');
+  if(!name||name.length<2){showToast('Nome inválido.','info');return;}
+  try{
+    const {updateProfile}=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+    await updateProfile(window._auth.currentUser,{displayName:name});
+    window._user.displayName=name;
+    updateUserUI(window._user);
+    document.getElementById('profile-display-name').textContent=name;
+    showToast('Nome atualizado!','success');
+    Logger.info('profile name updated');
+  }catch(e){showToast('Erro ao atualizar nome: '+e.message,'info');Logger.error('saveProfileName',{err:e.message});}
+}
+
+async function saveProfileEmail(){
+  const email=document.getElementById('pf-email')?.value.trim();
+  const re=/^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if(!email||!re.test(email)){showToast('E-mail inválido.','info');return;}
+  if(email===window._user?.email){showToast('É o mesmo e-mail atual.','info');return;}
+  try{
+    const {updateEmail}=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+    await updateEmail(window._auth.currentUser,email);
+    window._user.email=email;
+    document.getElementById('profile-email-display').textContent=email;
+    const hint=document.getElementById('pf-email-hint');
+    if(hint) hint.textContent='E-mail atualizado! Pode ser necessário verificar o novo endereço.';
+    showToast('E-mail atualizado!','success');
+  }catch(e){
+    const msgs={'auth/requires-recent-login':'Por segurança, saia e entre novamente antes de alterar o e-mail.','auth/email-already-in-use':'Este e-mail já está em uso.'};
+    showToast(msgs[e.code]||'Erro: '+e.message,'info');
+  }
+}
+
+async function saveProfilePassword(){
+  const current = document.getElementById('pf-pw-current')?.value;
+  const novo    = document.getElementById('pf-pw-new')?.value;
+  const confirm = document.getElementById('pf-pw-confirm')?.value;
+  const hint    = document.getElementById('pf-pw-hint');
+  const setHint = (msg,ok=false)=>{ if(hint){hint.textContent=msg;hint.style.color=ok?'var(--acc)':'var(--danger)';} };
+  if(!current){ setHint('Digite sua senha atual.'); return; }
+  if(novo.length<8){ setHint('A nova senha deve ter ao menos 8 caracteres.'); return; }
+  if(novo!==confirm){ setHint('As senhas não coincidem.'); return; }
+  if(novo===current){ setHint('A nova senha deve ser diferente da atual.'); return; }
+  try{
+    const {reauthenticateWithCredential,EmailAuthProvider,updatePassword}=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+    const cred=EmailAuthProvider.credential(window._user.email,current);
+    await reauthenticateWithCredential(window._auth.currentUser,cred);
+    await updatePassword(window._auth.currentUser,novo);
+    document.getElementById('pf-pw-current').value='';
+    document.getElementById('pf-pw-new').value='';
+    document.getElementById('pf-pw-confirm').value='';
+    document.getElementById('pf-pw-strength-fill').style.width='0%';
+    document.getElementById('pf-pw-strength-label').textContent='';
+    setHint('Senha alterada com sucesso!',true);
+    showToast('Senha alterada!','success');
+    Logger.info('password changed');
+  }catch(e){
+    const msgs={'auth/wrong-password':'Senha atual incorreta.','auth/requires-recent-login':'Saia e entre novamente para alterar a senha.','auth/weak-password':'Nova senha muito fraca.'};
+    setHint(msgs[e.code]||'Erro: '+e.message);
+  }
+}
+
+function saveProfileLevel(level,btn){
+  LS.set('gs-user-level',level);
+  document.querySelectorAll('.profile-level-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  showToast('Nível salvo!','success');
+}
+
+function saveProfilePrefs(){
+  const instr=document.getElementById('pf-instrument')?.value||'guitarra';
+  LS.set('gs-instrument',instr);
+  showToast('Preferências salvas!','success');
+}
+
+function saveTimerPrefs(){
+  const w=document.getElementById('pref-work')?.value;
+  const s=document.getElementById('pref-short')?.value;
+  const l=document.getElementById('pref-long')?.value;
+  const c=document.getElementById('pref-cyc')?.value;
+  if(w) document.getElementById('cfg-work').value=w;
+  if(s) document.getElementById('cfg-short').value=s;
+  if(l) document.getElementById('cfg-long').value=l;
+  if(c) document.getElementById('cfg-cyc').value=c;
+  applyConfig();
+  showToast('Timer configurado!','success');
+}
+
+function updatePwStrengthProfile(pw){
+  const fill  = document.getElementById('pf-pw-strength-fill');
+  const label = document.getElementById('pf-pw-strength-label');
+  if(!fill||!label)return;
+  let score=0;
+  if(pw.length>=8)score++;if(pw.length>=12)score++;
+  if(/[A-Z]/.test(pw))score++;if(/[0-9]/.test(pw))score++;if(/[^A-Za-z0-9]/.test(pw))score++;
+  const lvls=[{p:'20%',c:'#EF4444',t:'Muito fraca'},{p:'40%',c:'#F97316',t:'Fraca'},{p:'60%',c:'#EAB308',t:'Razoável'},{p:'80%',c:'#22C55E',t:'Forte'},{p:'100%',c:'#16A34A',t:'Muito forte'}];
+  const lvl=lvls[Math.min(score,4)];
+  fill.style.width=pw.length?lvl.p:'0%';fill.style.background=lvl.c;
+  label.textContent=pw.length?lvl.t:'';label.style.color=lvl.c;
+}
+
+function updatePrefsDarkToggle(){
+  const t=document.getElementById('pref-dark-toggle');
+  if(t) t.classList.toggle('active',isDark);
+}
+
+function _buildPrefPalette(){
+  const grid=document.getElementById('pref-palette-grid');
+  if(!grid)return;
+  const themes=[
+    {id:'amber',name:'Âmbar',c:['#92400E','#C2610F','#FEF3E2']},
+    {id:'moss',name:'Musgo',c:['#1A4731','#3D7A4A','#ECFDF5']},
+    {id:'slate',name:'Grafite',c:['#1E293B','#334155','#F1F5F9']},
+    {id:'wine',name:'Vinho',c:['#6B0F25','#9F1239','#FFF1F2']},
+    {id:'midnight',name:'Meia-Noite',c:['#312E81','#4F46E5','#EEF2FF']},
+    {id:'metal',name:'Metal',c:['#0A0A0A','#3A3A3A','#E0E0E0']},
+  ];
+  const cur=document.body.getAttribute('data-theme')||'amber';
+  grid.innerHTML=themes.map(t=>`
+    <button class="pref-palette-btn${t.id===cur?' active':''}" onclick="setPalette('${t.id}',document.querySelector('[data-theme=${t.id}]'));_buildPrefPalette()" title="${t.name}">
+      <div class="pref-palette-swatch">
+        ${t.c.map(c=>`<span style="background:${c}"></span>`).join('')}
+      </div>
+      <span>${t.name}</span>
+    </button>`).join('');
+}
+
+function togglePrefSound(){
+  const el=document.getElementById('snd');
+  if(el){el.checked=!el.checked;}
+  const t=document.getElementById('pref-snd-toggle');
+  if(t) t.classList.toggle('active',el?.checked);
+}
+
+function togglePrefInactivity(){
+  const t=document.getElementById('pref-inactivity-toggle');
+  if(t) t.classList.toggle('active');
+}
+
+async function deleteAccount(){
+  showConfirm(
+    '🗑 Excluir conta permanentemente?<br><span style="font-size:12px;color:var(--danger);font-weight:400">Todos os seus dados serão apagados. Esta ação não pode ser desfeita.</span>',
+    async()=>{
+      try{
+        // Limpar Firestore primeiro
+        const colNames=['exercises','sessions','goals','cycles','schedule'];
+        for(const c of colNames){
+          const docs=await FB.loadAll(c).catch(()=>[]);
+          if(docs) for(const d of docs) await FB.del(`${c}/${d.id||d._id||Date.now()}`).catch(()=>{});
+        }
+        const {deleteUser}=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
+        await deleteUser(window._auth.currentUser);
+        Store.reset();
+        showToast('Conta excluída. Até logo!','info',4000);
+        setTimeout(()=>location.reload(),2000);
+      }catch(e){
+        const msgs={'auth/requires-recent-login':'Por segurança, saia e entre novamente antes de excluir a conta.'};
+        showToast(msgs[e.code]||'Erro ao excluir: '+e.message,'info');
+      }
+    }
+  );
+}
+
+async function clearAllData(){
+  showConfirm(
+    'Apagar todos os dados?<br><span style="font-size:12px;font-weight:400;color:var(--muted)">Exercícios, histórico, metas e ciclos serão removidos. Sua conta permanece ativa.</span>',
+    async()=>{
+      Store.reset();saveAll();
+      const cols=['exercises','sessions','goals','cycles','schedule'];
+      for(const c of cols) await FB.del(c).catch(()=>{});
+      render();renderDash();
+      closeModal('profile-modal');
+      showToast('Dados apagados.','info');
+    }
+  );
 }
 
 // ════════════════════════════════════════
@@ -956,6 +1243,7 @@ document.addEventListener('keydown', e=>{
   if(e.key==='4')switchTab('hist',null,'hist');
   if(e.key==='5')switchTab('agenda',null,'agenda');
   if(e.key==='6')switchTab('goals',null,'goals');
+  if(e.key==='7')switchTab('repertorio',null,'repertorio');
 });
 
 // ════════════════════════════════════════
@@ -978,7 +1266,7 @@ function renderDash(){
   if(praticaOpen) updatePraticaSession();
   // Só re-renderiza o painel se estiver na aba Início
   if(currentTab!=='dash') return;
-  renderDashCycleBanner();renderDashStats();renderDashUrgent();renderDashFocus();renderDashNext();renderDashToday();
+  renderDashCycleBanner();renderDashStats();renderDashUrgent();renderDashFocus();renderDashNext();renderDashToday();renderDashRepertorio();
 }
 
 // Sincroniza o mini-timer embutido no Dashboard
@@ -1181,6 +1469,27 @@ function renderDashNext(){
   el.innerHTML=`<div class="dash-next"><div class="dash-next-title">Próximos exercícios<button class="btn xs ghost" onclick="switchTab('board',null,'board')">Ver todos →</button></div>${next.map(e=>`<div class="next-item" onclick="setFocus(${e.id});switchTab('board',null,'board')"><span class="next-item-name">${e.name}</span><span class="next-item-meta">${diffPill(e.diff)} ${weekPill(e.week)}${deadlineBadge(e)}</span></div>`).join('')}</div>`;
 }
 
+function renderDashRepertorio(){
+  const el=document.getElementById('dash-rep-preview');
+  if(!el)return;
+  const done=exercises.filter(e=>e.done);
+  if(!done.length){el.innerHTML='';return;}
+  const recent=done.slice().sort((a,b)=>b.id-a.id).slice(0,3);
+  el.innerHTML=`<div class="dash-next">
+    <div class="dash-next-title">🎸 Repertório <span style="font-size:11px;color:var(--muted);font-weight:400">${done.length} dominado${done.length>1?'s':''}</span>
+      <button class="btn xs ghost" onclick="switchTab('repertorio',null,'repertorio')">Ver tudo →</button>
+    </div>
+    ${recent.map(e=>{
+      const sess=history.filter(h=>h.exId===e.id).length;
+      const bpm=history.filter(h=>h.exId===e.id&&h.bpm).sort((a,b)=>b.bpm-a.bpm)[0]?.bpm||null;
+      return`<div class="next-item" style="opacity:.8" onclick="switchTab('repertorio',null,'repertorio')">
+        <span class="next-item-name">✅ ${e.name}</span>
+        <span class="next-item-meta">${diffPill(e.diff)}${bpm?`<span class="week-pill">${bpm} BPM</span>`:''}${sess?`<span class="week-pill">${sess}×</span>`:''}</span>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
 function renderDashToday(){
   const el=document.getElementById('dash-today-agenda');
   if(!el)return;
@@ -1306,12 +1615,205 @@ function markGoalDone(id){
   render();renderDash();
 }
 
+function markDone(id){
+  const ex=exercises.find(e=>e.id===id);if(!ex)return;
+  ex.done=true;ex.focus=false;
+  // Próximo exercício assume o foco
+  const next=exercises.find(e=>!e.done&&e.week===ex.week&&e.id!==id)||exercises.find(e=>!e.done&&e.id!==id);
+  if(next){next.focus=true;document.getElementById('p-ex').textContent=next.name;syncEx(next);}
+  else{const pex=document.getElementById('p-ex');if(pex)pex.textContent='Selecione um exercício';}
+  syncEx(ex);
+  // Fechar inline meta se aberta
+  const _im=document.getElementById(`inline-meta-${id}`);
+  if(_im)_im.style.display='none';
+  // Ciclo completo?
+  if(activeCycleId){
+    const cExs=exercises.filter(e=>e.cycleId===activeCycleId);
+    if(cExs.length&&cExs.every(e=>e.done)) showToast('🏆 Todos os exercícios do ciclo concluídos!','success',6000);
+  }
+  // Toast com Desfazer + link para Repertório
+  showToastUndo(
+    `"${ex.name}" concluído! 🎸`,
+    ()=>{ ex.done=false;ex.focus=false;syncEx(ex);render();renderDash(); },
+    5000
+  );
+  setTimeout(()=>{
+    const undobtn=document.getElementById('_undo-btn');
+    if(undobtn) undobtn.insertAdjacentHTML('afterend',
+      ` <span onclick="switchTab('repertorio',null,'repertorio')" style="cursor:pointer;text-decoration:underline;color:#fff;font-size:12px;margin-left:6px">Ver Repertório →</span>`
+    );
+  },80);
+  render();renderDash();
+}
+
 function reactivateEx(id){
   const ex=exercises.find(e=>e.id===id);if(!ex)return;
   ex.done=false;ex.focus=false;
   syncEx(ex);
   showToast(`"${ex.name}" reativado!`,'success');
   render();renderDash();
+}
+
+// ════════════════════════════════════════
+// REPERTÓRIO — exercícios que o usuário já domina
+// ════════════════════════════════════════
+function renderRepertorio(){
+  const done = exercises.filter(e=>e.done);
+  const search = (document.getElementById('rep-search')?.value||'').toLowerCase().trim();
+  const filterDiff = parseInt(document.getElementById('rep-filter-diff')?.value)||0;
+  const filterCycle = document.getElementById('rep-filter-cycle')?.value||'';
+  const sort = document.getElementById('rep-sort')?.value||'date';
+
+  // Popular filtro de ciclos
+  const cycleSelect = document.getElementById('rep-filter-cycle');
+  if(cycleSelect && cycleSelect.options.length <= 1){
+    cycles.forEach(c=>{
+      const opt = document.createElement('option');
+      opt.value = c.id; opt.textContent = c.name;
+      cycleSelect.appendChild(opt);
+    });
+  }
+
+  // Filtrar
+  let filtered = done.filter(e=>{
+    const matchSearch = !search || e.name.toLowerCase().includes(search) || (e.desc||'').toLowerCase().includes(search);
+    const matchDiff   = !filterDiff || e.diff===filterDiff;
+    const matchCycle  = !filterCycle || e.cycleId===filterCycle;
+    return matchSearch && matchDiff && matchCycle;
+  });
+
+  // Ordenar
+  filtered.sort((a,b)=>{
+    if(sort==='name')    return a.name.localeCompare(b.name);
+    if(sort==='diff')    return b.diff-a.diff;
+    if(sort==='sessions'){
+      const sa=history.filter(h=>h.exId===a.id).length;
+      const sb=history.filter(h=>h.exId===b.id).length;
+      return sb-sa;
+    }
+    if(sort==='bpm'){
+      const ba=history.filter(h=>h.exId===a.id&&h.bpm).sort((x,y)=>y.bpm-x.bpm)[0]?.bpm||0;
+      const bb=history.filter(h=>h.exId===b.id&&h.bpm).sort((x,y)=>y.bpm-x.bpm)[0]?.bpm||0;
+      return bb-ba;
+    }
+    // date: mais recente primeiro (id é Date.now())
+    return b.id-a.id;
+  });
+
+  // Stats
+  const statsEl = document.getElementById('rep-stats');
+  if(statsEl && done.length){
+    const totalSess = done.reduce((acc,e)=>acc+history.filter(h=>h.exId===e.id).length, 0);
+    const totalMin  = done.reduce((acc,e)=>acc+history.filter(h=>h.exId===e.id).reduce((s,h)=>s+(h.duration||25),0), 0);
+    const bestBpm   = done.reduce((acc,e)=>{
+      const b=history.filter(h=>h.exId===e.id&&h.bpm).sort((x,y)=>y.bpm-x.bpm)[0]?.bpm||0;
+      return Math.max(acc,b);
+    },0);
+    const byCycle   = {};
+    done.forEach(e=>{ const c=cycles.find(c=>c.id===e.cycleId); const k=c?c.name:'Sem ciclo'; byCycle[k]=(byCycle[k]||0)+1; });
+    const topCycle  = Object.entries(byCycle).sort((a,b)=>b[1]-a[1])[0];
+    statsEl.innerHTML=`
+      <div class="rep-stat"><div class="rep-stat-num">${done.length}</div><div class="rep-stat-lbl">Dominados</div></div>
+      <div class="rep-stat"><div class="rep-stat-num">${totalSess}</div><div class="rep-stat-lbl">Sessões totais</div></div>
+      <div class="rep-stat"><div class="rep-stat-num">${totalMin>=60?Math.round(totalMin/60)+'h':totalMin+'min'}</div><div class="rep-stat-lbl">Tempo praticado</div></div>
+      ${bestBpm?`<div class="rep-stat"><div class="rep-stat-num">${bestBpm}</div><div class="rep-stat-lbl">Maior BPM</div></div>`:''}
+      ${topCycle?`<div class="rep-stat rep-stat-wide"><div class="rep-stat-num">${topCycle[1]}</div><div class="rep-stat-lbl">de "${topCycle[0]}"</div></div>`:''}
+    `;
+  } else if(statsEl) statsEl.innerHTML='';
+
+  // Sub-título
+  const subEl=document.getElementById('rep-sub');
+  if(subEl) subEl.textContent=done.length
+    ? `${done.length} exercício${done.length>1?'s':''} dominado${done.length>1?'s':''}${filtered.length<done.length?' · '+filtered.length+' exibidos':''}`
+    : 'Exercícios e músicas que você já domina';
+
+  // Vazio
+  const emptyEl=document.getElementById('rep-empty');
+  const gridEl=document.getElementById('rep-grid');
+  if(!done.length){
+    if(emptyEl) emptyEl.classList.remove('hidden');
+    if(gridEl)  gridEl.innerHTML='';
+    return;
+  }
+  if(emptyEl) emptyEl.classList.add('hidden');
+
+  if(!gridEl) return;
+
+  if(!filtered.length){
+    gridEl.innerHTML=`<div class="rep-no-results">Nenhum resultado para "<strong>${search||'filtro aplicado'}</strong>"</div>`;
+    return;
+  }
+
+  gridEl.innerHTML = filtered.map(e=>{
+    const sess     = history.filter(h=>h.exId===e.id);
+    const sessCount= sess.length;
+    const totalMin = sess.reduce((s,h)=>s+(h.duration||25),0);
+    const bestBpm  = sess.filter(h=>h.bpm).sort((a,b)=>b.bpm-a.bpm)[0]?.bpm||null;
+    const lastDate = sess.sort((a,b)=>(b.isoDate||'').localeCompare(a.isoDate||''))[0]?.date||'—';
+    const lastNote = sess.find(h=>h.note&&h.note!=='—')?.note||'';
+    const cycle    = cycles.find(c=>c.id===e.cycleId);
+    const diffStars= '★'.repeat(e.diff)+'☆'.repeat(5-e.diff);
+    return `<div class="rep-card" data-id="${e.id}">
+      <div class="rep-card-header">
+        <div class="rep-card-name">${e.name}</div>
+        <div class="rep-card-menu">
+          <button class="rep-card-menu-btn" onclick="toggleRepMenu(${e.id})" title="Opções">⋯</button>
+          <div class="rep-card-dropdown" id="rep-menu-${e.id}">
+            <div class="rep-menu-item" onclick="reactivateEx(${e.id});renderRepertorio()">↩ Mover para o Quadro</div>
+            <div class="rep-menu-item" onclick="openEditModal(${e.id})">✏️ Editar</div>
+            <div class="rep-menu-item danger" onclick="deleteExById(${e.id})">🗑️ Excluir</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="rep-card-diff" title="Dificuldade: ${DIFF_LABELS[e.diff]}">${diffStars} <span>${DIFF_LABELS[e.diff]}</span></div>
+
+      ${e.desc&&e.desc!=='Sem descrição.'?`<div class="rep-card-desc">${e.desc}</div>`:''}
+
+      <div class="rep-card-stats">
+        ${sessCount?`<div class="rep-card-stat"><span class="rep-stat-icon">🔄</span>${sessCount} sessão${sessCount>1?'s':''}</div>`:''}
+        ${totalMin?`<div class="rep-card-stat"><span class="rep-stat-icon">⏱</span>${totalMin>=60?Math.round(totalMin/60)+'h':totalMin+' min'}</div>`:''}
+        ${bestBpm?`<div class="rep-card-stat"><span class="rep-stat-icon">🎯</span>${bestBpm} BPM</div>`:''}
+        <div class="rep-card-stat"><span class="rep-stat-icon">📅</span>última: ${lastDate}</div>
+      </div>
+
+      ${lastNote?`<div class="rep-card-note">"${lastNote.length>80?lastNote.slice(0,80)+'…':lastNote}"</div>`:''}
+
+      <div class="rep-card-footer">
+        ${cycle?`<span class="rep-cycle-tag">${cycle.icon||'📚'} ${cycle.name}</span>`:''}
+        <button class="btn xs pri" onclick="reviveEx(${e.id})" title="Revisar — mover para praticar novamente">🔁 Revisar</button>
+      </div>
+    </div>`;
+  }).join('');
+
+  // Fechar menus ao clicar fora
+  document.querySelectorAll('.rep-card-dropdown').forEach(d=>d.classList.remove('open'));
+}
+
+function toggleRepMenu(id){
+  const el=document.getElementById(`rep-menu-${id}`);
+  if(!el)return;
+  const wasOpen=el.classList.contains('open');
+  document.querySelectorAll('.rep-card-dropdown').forEach(d=>d.classList.remove('open'));
+  if(!wasOpen) el.classList.add('open');
+}
+
+// "Revisar" — move de volta ao quadro mas mantém histórico
+function reviveEx(id){
+  const ex=exercises.find(e=>e.id===id);if(!ex)return;
+  showConfirm(
+    `Revisar "<strong>${ex.name}</strong>"?<br><span style="font-size:12px;font-weight:400;color:var(--muted)">O exercício voltará ao Quadro para uma nova rodada de prática. O histórico é mantido.</span>`,
+    ()=>{
+      ex.done=false; ex.focus=true;
+      // Desfocar os outros
+      exercises.forEach(e=>{if(e.id!==id)e.focus=false;});
+      syncEx(ex);
+      document.getElementById('p-ex').textContent=ex.name;
+      showToast(`"${ex.name}" voltou ao Quadro para revisão! 🔁`,'success',4000);
+      render(); renderDash(); renderRepertorio();
+      switchTab('board',null,'board');
+    }, false
+  );
 }
 
 function renderDone(){

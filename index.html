@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.google.com wss://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; frame-src https://guitarra-studio.firebaseapp.com https://accounts.google.com;">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' https://www.gstatic.com https://apis.google.com; connect-src 'self' https://*.googleapis.com https://*.firebaseio.com https://*.firebasestorage.googleapis.com https://*.google.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com wss://*.firebaseio.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self' data: https://*.googleusercontent.com; frame-src https://guitarra-studio.firebaseapp.com https://accounts.google.com https://*.firebaseapp.com;">
 <title>Guitarra Studio</title>
 <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css">
@@ -144,7 +144,7 @@ onAuthStateChanged(auth, user => {
         Continuar com Google
       </button>
       <div class="login-footer-txt">Não tem conta? <a href="#" onclick="loginSwitchTab('register');return false;">Criar conta grátis</a></div>
-      <div class="login-offline" onclick="useOffline()">Usar sem conta (dados locais apenas)</div>
+
     </div>
 
     <!-- PAINEL CRIAR CONTA -->
@@ -160,11 +160,13 @@ onAuthStateChanged(auth, user => {
       <div class="login-field">
         <label for="lp-reg-password">Senha</label>
         <div class="login-input-wrap">
-          <input class="login-input login-has-toggle" type="password" id="lp-reg-password" placeholder="Mínimo 6 caracteres" autocomplete="new-password">
+          <input class="login-input login-has-toggle" type="password" id="lp-reg-password" placeholder="Mínimo 8 caracteres" autocomplete="new-password" oninput="updatePasswordStrength(this.value)">
           <button class="login-pw-toggle" onclick="loginTogglePw('lp-reg-password',this)" tabindex="-1" type="button">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
           </button>
         </div>
+        <div class="pw-strength-bar" id="pw-strength-bar"><div class="pw-strength-fill" id="pw-strength-fill"></div></div>
+        <div class="pw-strength-label" id="pw-strength-label"></div>
       </div>
       <button class="login-btn-primary" onclick="loginHandleRegister()">Criar conta</button>
       <div class="login-divider">ou</div>
@@ -191,6 +193,7 @@ onAuthStateChanged(auth, user => {
   <button class="tab tab-desktop-only"     onclick="switchTab('agenda',this)">Agenda</button>
   <button class="tab tab-desktop-only"     onclick="switchTab('goals',this)">Metas</button>
   <button class="tab tab-desktop-only"     onclick="switchTab('hist',this)">Histórico</button>
+  <button class="tab tab-desktop-only"     onclick="switchTab('repertorio',this)">🎸 Repertório</button>
   <div class="topbar-right">
     <div class="sync-status tab-desktop-only"><div class="sync-dot syncing" id="sync-dot"></div><span id="sync-label">…</span></div>
     <span class="topbar-date tab-desktop-only" id="tb-date"></span>
@@ -212,15 +215,206 @@ onAuthStateChanged(auth, user => {
   <div class="palette-option" data-theme="metal" onclick="setPalette('metal',this)"><div class="palette-swatch"><span style="background:#0A0A0A"></span><span style="background:#3A3A3A"></span><span style="background:#E0E0E0"></span></div><div><div class="palette-name">🤘 Metal</div></div></div>
 </div>
 
+<!-- ════ MODAL DE PERFIL ════ -->
+<div class="modal-overlay" id="profile-modal">
+  <div class="modal profile-modal-inner">
+
+    <div class="profile-header">
+      <div class="profile-avatar-wrap" id="profile-avatar-big">?</div>
+      <div>
+        <div class="profile-name" id="profile-display-name">—</div>
+        <div class="profile-email" id="profile-email-display">—</div>
+        <div class="profile-badge" id="profile-provider-badge">Google</div>
+      </div>
+      <button class="modal-close" onclick="closeModal('profile-modal')">✕</button>
+    </div>
+
+    <div class="profile-tabs">
+      <button class="profile-tab active" onclick="switchProfileTab('info',this)">👤 Meu perfil</button>
+      <button class="profile-tab" onclick="switchProfileTab('senha',this)">🔒 Segurança</button>
+      <button class="profile-tab" onclick="switchProfileTab('dados',this)">📦 Dados</button>
+      <button class="profile-tab" onclick="switchProfileTab('prefs',this)">⚙️ Preferências</button>
+    </div>
+
+    <!-- TAB: Perfil -->
+    <div class="profile-section" id="ptab-info">
+      <div class="profile-field-group">
+        <label class="profile-label">Nome de exibição</label>
+        <div class="profile-input-row">
+          <input class="profile-input" id="pf-name" type="text" maxlength="50" placeholder="Seu nome">
+          <button class="btn pri sm" onclick="saveProfileName()">Salvar</button>
+        </div>
+      </div>
+
+      <div class="profile-field-group">
+        <label class="profile-label">E-mail</label>
+        <div class="profile-input-row">
+          <input class="profile-input" id="pf-email" type="email" maxlength="100" placeholder="seu@email.com">
+          <button class="btn pri sm" onclick="saveProfileEmail()">Salvar</button>
+        </div>
+        <div class="profile-hint" id="pf-email-hint"></div>
+      </div>
+
+      <div class="profile-field-group">
+        <label class="profile-label">Nível musical</label>
+        <div class="profile-level-grid" id="pf-level-grid">
+          <button class="profile-level-btn" onclick="saveProfileLevel(1,this)"><span>🌱</span> Iniciante</button>
+          <button class="profile-level-btn" onclick="saveProfileLevel(2,this)"><span>🎵</span> Intermediário</button>
+          <button class="profile-level-btn" onclick="saveProfileLevel(3,this)"><span>🔥</span> Avançado</button>
+        </div>
+      </div>
+
+      <div class="profile-field-group">
+        <label class="profile-label">Instrumento preferido</label>
+        <div class="profile-input-row">
+          <select class="profile-input" id="pf-instrument">
+            <option value="guitarra">🎸 Guitarra elétrica</option>
+            <option value="violao">🎶 Violão</option>
+            <option value="baixo">🎵 Baixo</option>
+            <option value="classico">🎼 Violão clássico</option>
+          </select>
+          <button class="btn pri sm" onclick="saveProfilePrefs()">Salvar</button>
+        </div>
+      </div>
+
+      <div class="profile-stats-row" id="pf-stats-row"></div>
+    </div>
+
+    <!-- TAB: Segurança -->
+    <div class="profile-section hidden" id="ptab-senha">
+
+      <div class="profile-field-group" id="pf-change-pw-section">
+        <label class="profile-label">Alterar senha</label>
+        <div class="profile-pw-hint" id="pf-pw-method-hint"></div>
+        <input class="profile-input" id="pf-pw-current" type="password" placeholder="Senha atual" autocomplete="current-password" style="margin-bottom:8px">
+        <input class="profile-input" id="pf-pw-new" type="password" placeholder="Nova senha (mín. 8 caracteres)" autocomplete="new-password" oninput="updatePwStrengthProfile(this.value)" style="margin-bottom:4px">
+        <div class="pw-strength-bar"><div class="pw-strength-fill" id="pf-pw-strength-fill"></div></div>
+        <div class="pw-strength-label" id="pf-pw-strength-label" style="margin-bottom:8px"></div>
+        <input class="profile-input" id="pf-pw-confirm" type="password" placeholder="Confirmar nova senha" autocomplete="new-password" style="margin-bottom:12px">
+        <button class="btn pri" style="width:100%" onclick="saveProfilePassword()">🔒 Alterar senha</button>
+        <div class="profile-hint" id="pf-pw-hint"></div>
+      </div>
+
+      <div class="profile-divider"></div>
+
+      <div class="profile-field-group">
+        <label class="profile-label">Sessões ativas</label>
+        <div class="profile-hint">Ao sair da conta em todos os dispositivos, você precisará fazer login novamente em cada um.</div>
+        <button class="btn ghost sm" style="margin-top:8px;width:100%" onclick="confirmLogout()">↩ Sair da conta agora</button>
+      </div>
+
+      <div class="profile-divider"></div>
+
+      <div class="profile-field-group">
+        <label class="profile-label" style="color:var(--danger)">Zona de perigo</label>
+        <div class="profile-hint">Esta ação é irreversível. Todos os seus dados serão permanentemente excluídos.</div>
+        <button class="btn danger sm" style="margin-top:8px;width:100%" onclick="deleteAccount()">🗑 Excluir minha conta</button>
+      </div>
+    </div>
+
+    <!-- TAB: Dados -->
+    <div class="profile-section hidden" id="ptab-dados">
+      <div class="profile-data-stats" id="pf-data-stats"></div>
+
+      <div class="profile-field-group">
+        <label class="profile-label">Exportar seus dados</label>
+        <div class="profile-hint">Baixe uma cópia completa de tudo que está salvo.</div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn sm" onclick="exportData('json');closeModal('profile-modal')">📄 JSON completo</button>
+          <button class="btn sm" onclick="exportData('csv');closeModal('profile-modal')">📊 Histórico CSV</button>
+        </div>
+      </div>
+
+      <div class="profile-divider"></div>
+
+      <div class="profile-field-group">
+        <label class="profile-label">Importar backup</label>
+        <div class="profile-hint">Restaure um backup exportado anteriormente. Os dados atuais serão substituídos.</div>
+        <button class="btn sm" style="margin-top:10px" onclick="importData();closeModal('profile-modal')">⬆ Importar arquivo JSON</button>
+      </div>
+
+      <div class="profile-divider"></div>
+
+      <div class="profile-field-group">
+        <label class="profile-label" style="color:var(--danger)">Apagar dados</label>
+        <div class="profile-hint">Remove todos os exercícios, histórico, metas e ciclos. A conta permanece ativa.</div>
+        <button class="btn danger sm" style="margin-top:8px" onclick="clearAllData()">🗑 Apagar todos os dados</button>
+      </div>
+    </div>
+
+    <!-- TAB: Preferências -->
+    <div class="profile-section hidden" id="ptab-prefs">
+      <div class="profile-field-group">
+        <label class="profile-label">Aparência</label>
+        <div class="pref-row">
+          <span>Modo escuro</span>
+          <button class="pref-toggle" id="pref-dark-toggle" onclick="toggleDark();updatePrefsDarkToggle()">
+            <div class="pref-toggle-thumb"></div>
+          </button>
+        </div>
+        <div class="pref-row" style="margin-top:12px">
+          <span>Paleta de cores</span>
+        </div>
+        <div class="pref-palette-grid" id="pref-palette-grid"></div>
+      </div>
+
+      <div class="profile-divider"></div>
+
+      <div class="profile-field-group">
+        <label class="profile-label">Pomodoro padrão</label>
+        <div class="pref-timer-grid">
+          <div class="pref-timer-item">
+            <label>Foco (min)</label>
+            <input type="number" class="profile-input" id="pref-work" min="1" max="90" value="25">
+          </div>
+          <div class="pref-timer-item">
+            <label>Pausa curta</label>
+            <input type="number" class="profile-input" id="pref-short" min="1" max="30" value="5">
+          </div>
+          <div class="pref-timer-item">
+            <label>Pausa longa</label>
+            <input type="number" class="profile-input" id="pref-long" min="1" max="60" value="15">
+          </div>
+          <div class="pref-timer-item">
+            <label>Ciclos</label>
+            <input type="number" class="profile-input" id="pref-cyc" min="1" max="10" value="4">
+          </div>
+        </div>
+        <button class="btn pri sm" style="margin-top:10px" onclick="saveTimerPrefs()">Salvar configurações</button>
+      </div>
+
+      <div class="profile-divider"></div>
+
+      <div class="profile-field-group">
+        <label class="profile-label">Notificações</label>
+        <div class="pref-row">
+          <span>Som ao encerrar sessão</span>
+          <button class="pref-toggle" id="pref-snd-toggle" onclick="togglePrefSound()">
+            <div class="pref-toggle-thumb"></div>
+          </button>
+        </div>
+        <div class="pref-row" style="margin-top:10px">
+          <span>Notificação de inatividade</span>
+          <button class="pref-toggle active" id="pref-inactivity-toggle" onclick="togglePrefInactivity()">
+            <div class="pref-toggle-thumb"></div>
+          </button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
 <!-- User menu -->
 <div class="user-menu" id="user-menu">
   <div class="user-menu-header">
     <div class="user-menu-name" id="um-name">Usuário</div>
     <div class="user-menu-email" id="um-email"></div>
   </div>
-  <div class="user-menu-item" onclick="importData()">⬆ Importar backup (JSON)</div>
-  <div class="user-menu-item" onclick="exportData()">⬇ Exportar dados (JSON)</div>
-  <div class="user-menu-item" onclick="exportData('csv')">⬇ Exportar histórico (CSV)</div>
+  <div class="user-menu-item" onclick="openProfile()">👤 Meu perfil</div>
+  <div class="user-menu-item" onclick="openProfile('senha')">🔒 Alterar senha</div>
+  <div class="user-menu-item" onclick="openProfile('dados')">📦 Importar / Exportar</div>
+  <div class="user-menu-divider"></div>
   <div class="user-menu-item danger" onclick="confirmLogout()">↩ Sair da conta</div>
 </div>
 
@@ -396,6 +590,7 @@ onAuthStateChanged(auth, user => {
   <div id="dash-focus-area"></div>
   <div id="dash-next-area"></div>
   <div id="dash-today-agenda"></div>
+  <div id="dash-rep-preview"></div>
 </div></main>
 
 <section id="tab-board" style="display:none">
@@ -429,6 +624,53 @@ onAuthStateChanged(auth, user => {
 
 <section id="tab-goals" style="display:none"><div class="goals-wrap"><div class="goals-header"><div class="goals-title">🎯 Metas</div><button class="btn pri" onclick="openGoalModal()">+ Nova meta</button></div><div class="goal-tabs"><button class="goal-tab on" onclick="setGoalTab('active',this)">Ativas</button><button class="goal-tab" onclick="setGoalTab('done',this)">Concluídas</button></div><div id="goals-list"></div></div></section>
 
+<!-- ════ REPERTÓRIO ════ -->
+<section id="tab-repertorio" style="display:none">
+  <div class="rep-wrap">
+    <div class="rep-header">
+      <div>
+        <div class="rep-title">🎸 Meu Repertório</div>
+        <div class="rep-sub" id="rep-sub">Exercícios e músicas que você já domina</div>
+      </div>
+      <div class="rep-header-actions">
+        <input class="rep-search" id="rep-search" type="text" placeholder="Buscar..." oninput="renderRepertorio()">
+        <select class="rep-filter" id="rep-filter-diff" onchange="renderRepertorio()">
+          <option value="">Todas as dificuldades</option>
+          <option value="1">Iniciante</option>
+          <option value="2">Básico</option>
+          <option value="3">Intermediário</option>
+          <option value="4">Avançado</option>
+          <option value="5">Expert</option>
+        </select>
+        <select class="rep-filter" id="rep-filter-cycle" onchange="renderRepertorio()">
+          <option value="">Todos os ciclos</option>
+        </select>
+        <select class="rep-filter" id="rep-sort" onchange="renderRepertorio()">
+          <option value="date">Mais recentes</option>
+          <option value="name">Nome A→Z</option>
+          <option value="diff">Dificuldade</option>
+          <option value="sessions">Mais praticados</option>
+          <option value="bpm">Maior BPM</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Stats do repertório -->
+    <div class="rep-stats" id="rep-stats"></div>
+
+    <!-- Grade de cards -->
+    <div class="rep-grid" id="rep-grid"></div>
+
+    <!-- Estado vazio -->
+    <div class="rep-empty hidden" id="rep-empty">
+      <div class="rep-empty-icon">🎸</div>
+      <div class="rep-empty-title">Repertório vazio</div>
+      <div class="rep-empty-sub">Quando você concluir um exercício no Quadro, ele aparece aqui.<br>É o seu acervo do que já sabe tocar.</div>
+      <button class="btn pri" onclick="switchTab('board',null,'board')">Ir ao Quadro →</button>
+    </div>
+  </div>
+</section>
+
 <section id="tab-hist" style="display:none">
   <div class="hist-wrap">
     <div class="stat-grid"><div class="stat-box"><div class="stat-num" id="h-total">0</div><div class="stat-lbl">Sessões</div></div><div class="stat-box"><div class="stat-num" id="h-mins">0</div><div class="stat-lbl">Minutos</div></div><div class="stat-box"><div class="stat-num" id="h-streak">0</div><div class="stat-lbl">Streak</div></div></div>
@@ -447,6 +689,7 @@ onAuthStateChanged(auth, user => {
     <div class="bnav-item" onclick="switchTab('cycles',null,'cycles')" id="bnav-cycles"><div class="bnav-icon">📚</div><div class="bnav-label">Ciclos</div></div>
     <div class="bnav-item" onclick="switchTab('goals',null,'goals')" id="bnav-goals"><div class="bnav-icon">🎯</div><div class="bnav-label">Metas</div></div>
     <div class="bnav-item" onclick="switchTab('hist',null,'hist')" id="bnav-hist"><div class="bnav-icon">📊</div><div class="bnav-label">Histórico</div></div>
+    <div class="bnav-item" onclick="switchTab('repertorio',null,'repertorio')" id="bnav-repertorio"><div class="bnav-icon">🎸</div><div class="bnav-label">Repertório</div></div>
   </div>
 </nav>
 
@@ -485,8 +728,74 @@ onAuthStateChanged(auth, user => {
 <script src="app.js"></script>
 <script>
 /* ── Login screen helpers ── */
+// ── Helpers de erro inline nos campos ──
+function showLoginError(inputId, msg) {
+  const inp = document.getElementById(inputId);
+  if (!inp) { showToast(msg, 'info'); return; }
+  inp.classList.add('login-input-error');
+  let err = inp.parentElement.querySelector('.login-field-error');
+  if (!err) {
+    err = document.createElement('div');
+    err.className = 'login-field-error';
+    inp.parentElement.appendChild(err);
+  }
+  err.textContent = msg;
+  inp.focus();
+}
+
+function clearLoginErrors() {
+  document.querySelectorAll('.login-input-error').forEach(el => el.classList.remove('login-input-error'));
+  document.querySelectorAll('.login-field-error').forEach(el => el.remove());
+}
+
+// Limpar erro ao digitar
+document.addEventListener('DOMContentLoaded', () => {
+  ['lp-email','lp-password','lp-name','lp-reg-email','lp-reg-password'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', () => {
+      el.classList.remove('login-input-error');
+      const err = el.parentElement.querySelector('.login-field-error');
+      if (err) err.remove();
+    });
+  });
+  // Enter submete o formulário ativo
+  document.getElementById('lp-password')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') loginHandleEmail();
+  });
+  document.getElementById('lp-reg-password')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') loginHandleRegister();
+  });
+  document.getElementById('lp-email')?.addEventListener('keydown', e => {
+    if (e.key === 'Enter') loginHandleEmail();
+  });
+});
+
 const _EYE_OPEN   = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
 const _EYE_CLOSED = '<path d="M17.94 17.94A10.07 10.07 0 0112 20c-7 0-11-8-11-8a18.45 18.45 0 015.06-5.94M9.9 4.24A9.12 9.12 0 0112 4c7 0 11 8 11 8a18.5 18.5 0 01-2.16 3.19m-6.72-1.07a3 3 0 11-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
+
+function updatePasswordStrength(pw) {
+  const bar   = document.getElementById('pw-strength-fill');
+  const label = document.getElementById('pw-strength-label');
+  if (!bar || !label) return;
+  let score = 0;
+  if (pw.length >= 8)                     score++;
+  if (pw.length >= 12)                    score++;
+  if (/[A-Z]/.test(pw))                   score++;
+  if (/[0-9]/.test(pw))                   score++;
+  if (/[^A-Za-z0-9]/.test(pw))           score++;
+  const levels = [
+    { pct: '20%', color: '#EF4444', txt: 'Muito fraca' },
+    { pct: '40%', color: '#F97316', txt: 'Fraca' },
+    { pct: '60%', color: '#EAB308', txt: 'Razoável' },
+    { pct: '80%', color: '#22C55E', txt: 'Forte' },
+    { pct: '100%',color: '#16A34A', txt: 'Muito forte' },
+  ];
+  const lvl = levels[Math.min(score, 4)];
+  bar.style.width = pw.length ? lvl.pct : '0%';
+  bar.style.background = lvl.color;
+  label.textContent = pw.length ? lvl.txt : '';
+  label.style.color = lvl.color;
+}
 
 function loginSwitchTab(tab) {
   const toggle = document.getElementById('login-tab-toggle');
@@ -515,27 +824,57 @@ function loginTogglePw(id, btn) {
   btn.querySelector('svg').innerHTML = show ? _EYE_OPEN : _EYE_CLOSED;
 }
 
+// ── Rate limiting client-side (backoff exponencial) ──
+const _loginAttempts = { count: 0, lockedUntil: 0 };
+
+function _checkRateLimit() {
+  const now = Date.now();
+  if (_loginAttempts.lockedUntil > now) {
+    const secs = Math.ceil((_loginAttempts.lockedUntil - now) / 1000);
+    showToast(`Muitas tentativas. Aguarde ${secs}s.`, 'info');
+    return false;
+  }
+  return true;
+}
+
+function _registerFailedAttempt() {
+  _loginAttempts.count++;
+  // Backoff: 3 tentativas → 15s, 5 → 60s, 7+ → 5min
+  const delays = [0, 0, 0, 15000, 30000, 60000, 120000, 300000];
+  const delay = delays[Math.min(_loginAttempts.count, delays.length - 1)];
+  if (delay > 0) _loginAttempts.lockedUntil = Date.now() + delay;
+}
+
+function _resetAttempts() { _loginAttempts.count = 0; _loginAttempts.lockedUntil = 0; }
+
 async function loginHandleEmail() {
-  const email = document.getElementById('lp-email').value.trim();
+  if (!_checkRateLimit()) return;
+  const email    = document.getElementById('lp-email').value.trim();
   const password = document.getElementById('lp-password').value;
-  if (!email || !email.includes('@')) { showToast('Digite um e-mail válido.', 'info'); return; }
-  if (!password) { showToast('Digite sua senha.', 'info'); return; }
+  // Validação de e-mail mais robusta
+  const emailRe  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || !emailRe.test(email)) { showLoginError('lp-email', 'Digite um e-mail válido.'); return; }
+  if (!password)                       { showLoginError('lp-password', 'Digite sua senha.'); return; }
+  clearLoginErrors();
   const btn = document.querySelector('#lp-login .login-btn-primary');
-  btn.disabled = true; btn.textContent = 'Entrando…';
+  btn.disabled = true; btn.innerHTML = '<span class="login-spinner"></span> Entrando…';
   try {
     const { signInWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
-    // auth é exposto via window para uso externo
     if (!window._auth) { showToast('Auth não inicializado.', 'info'); return; }
     await signInWithEmailAndPassword(window._auth, email, password);
+    _resetAttempts();
   } catch(e) {
+    _registerFailedAttempt();
     const msgs = {
-      'auth/user-not-found': 'Usuário não encontrado.',
-      'auth/wrong-password': 'Senha incorreta.',
-      'auth/invalid-credential': 'E-mail ou senha incorretos.',
-      'auth/too-many-requests': 'Muitas tentativas. Aguarde um momento.',
-      'auth/network-request-failed': 'Sem conexão com a internet.'
+      'auth/user-not-found':      'E-mail ou senha incorretos.',
+      'auth/wrong-password':      'E-mail ou senha incorretos.',
+      'auth/invalid-credential':  'E-mail ou senha incorretos.',
+      'auth/too-many-requests':   'Conta temporariamente bloqueada. Redefina sua senha ou tente mais tarde.',
+      'auth/network-request-failed': 'Sem conexão com a internet.',
+      'auth/user-disabled':       'Esta conta foi desativada.',
     };
-    showToast(msgs[e.code] || 'Erro ao entrar: ' + e.message, 'info');
+    // Não distinguir "usuário não encontrado" de "senha errada" — evita user enumeration
+    showLoginError('lp-password', msgs[e.code] || 'Erro ao entrar. Tente novamente.');
   } finally {
     btn.disabled = false; btn.textContent = 'Entrar';
   }
@@ -545,39 +884,61 @@ async function loginHandleRegister() {
   const name     = document.getElementById('lp-name').value.trim();
   const email    = document.getElementById('lp-reg-email').value.trim();
   const password = document.getElementById('lp-reg-password').value;
-  if (!name)                        { showToast('Informe seu nome.', 'info'); return; }
-  if (!email || !email.includes('@')){ showToast('E-mail inválido.', 'info'); return; }
-  if (password.length < 6)          { showToast('Senha deve ter ao menos 6 caracteres.', 'info'); return; }
+  const emailRe  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  // Sanitizar nome — remover HTML
+  const safeName = name.replace(/[<>"']/g, '');
+  if (!safeName || safeName.length < 2)  { showLoginError('lp-name', 'Informe seu nome (mín. 2 caracteres).'); return; }
+  if (safeName.length > 50)              { showLoginError('lp-name', 'Nome muito longo.'); return; }
+  if (!email || !emailRe.test(email))    { showLoginError('lp-reg-email', 'Digite um e-mail válido.'); return; }
+  if (password.length < 8)              { showLoginError('lp-reg-password', 'Senha deve ter ao menos 8 caracteres.'); return; }
+  if (password.toLowerCase().includes(email.split('@')[0].toLowerCase()) && email.split('@')[0].length > 2) {
+    showLoginError('lp-reg-password', 'Evite usar seu e-mail na senha.'); return;
+  }
+  clearLoginErrors();
   const btn = document.querySelector('#lp-register .login-btn-primary');
-  btn.disabled = true; btn.textContent = 'Criando conta…';
+  btn.disabled = true; btn.innerHTML = '<span class="login-spinner"></span> Criando conta…';
   try {
     const { createUserWithEmailAndPassword, updateProfile } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
     if (!window._auth) { showToast('Auth não inicializado.', 'info'); return; }
     const cred = await createUserWithEmailAndPassword(window._auth, email, password);
-    await updateProfile(cred.user, { displayName: name });
+    await updateProfile(cred.user, { displayName: safeName });
   } catch(e) {
     const msgs = {
-      'auth/email-already-in-use': 'Este e-mail já está cadastrado.',
-      'auth/invalid-email': 'E-mail inválido.',
-      'auth/weak-password': 'Senha muito fraca. Use ao menos 6 caracteres.',
-      'auth/network-request-failed': 'Sem conexão com a internet.'
+      'auth/email-already-in-use':    'Este e-mail já está cadastrado. Tente entrar.',
+      'auth/invalid-email':           'E-mail inválido.',
+      'auth/weak-password':           'Senha muito fraca. Use ao menos 8 caracteres.',
+      'auth/network-request-failed':  'Sem conexão com a internet.',
+      'auth/operation-not-allowed':   'Cadastro por e-mail não está ativado.',
     };
-    showToast(msgs[e.code] || 'Erro ao criar conta: ' + e.message, 'info');
+    showLoginError('lp-reg-email', msgs[e.code] || 'Erro ao criar conta. Tente novamente.');
   } finally {
     btn.disabled = false; btn.textContent = 'Criar conta';
   }
 }
 
+let _forgotLastSent = 0;
 async function loginForgotPassword() {
-  const email = document.getElementById('lp-email').value.trim();
-  if (!email || !email.includes('@')) { showToast('Digite seu e-mail primeiro.', 'info'); return; }
+  // Throttle: max 1 e-mail por 60s
+  const now = Date.now();
+  if (now - _forgotLastSent < 60000) {
+    const secs = Math.ceil((60000 - (now - _forgotLastSent)) / 1000);
+    showToast(`Aguarde ${secs}s para reenviar.`, 'info'); return;
+  }
+  const email   = document.getElementById('lp-email').value.trim();
+  const emailRe = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!email || !emailRe.test(email)) { showLoginError('lp-email','Digite seu e-mail primeiro.'); return; }
+  clearLoginErrors();
   try {
     const { sendPasswordResetEmail } = await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js');
     if (!window._auth) { showToast('Auth não inicializado.', 'info'); return; }
     await sendPasswordResetEmail(window._auth, email);
-    showToast('E-mail de recuperação enviado! Verifique sua caixa de entrada.', 'success');
+    _forgotLastSent = Date.now();
+    // Sempre mostrar sucesso — não revelar se e-mail existe (evita enumeration)
+    showToast('Se este e-mail estiver cadastrado, você receberá as instruções em breve.', 'success', 5000);
   } catch(e) {
-    showToast('Erro ao enviar: ' + e.message, 'info');
+    // Não expor detalhes do erro ao usuário
+    showToast('Se este e-mail estiver cadastrado, você receberá as instruções em breve.', 'success', 5000);
+    Logger?.warn('forgot password error', { code: e.code });
   }
 }
 </script>
